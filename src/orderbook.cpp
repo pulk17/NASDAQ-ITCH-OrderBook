@@ -21,16 +21,21 @@ void OrderBook::delete_order(uint64_t order_ref){
     
     OrderMeta& order = it -> second;
 
-    auto& map = (order.side == 'B') ? bids : asks;
-
-    auto pit = map.find(order.price);
-    if(pit == map.end()){
-        order_lookup.erase(order_ref);
-        return;
+    if(order.side == 'B') {
+        auto pit = bids.find(order.price);
+        if(pit != bids.end()){
+            pit -> second -= order.shares;
+            if(pit -> second == 0) bids.erase(pit);
+        }
     }
-
-    pit -> second -= order.shares;
-    if(pit -> second == 0) map.erase(pit);
+    
+    else{
+        auto pit = asks.find(order.price);
+        if(pit != asks.end()){
+            pit -> second -= order.shares;
+            if(pit -> second == 0) asks.erase(pit);
+        }
+    }
     
     order_lookup.erase(order_ref);
 }
@@ -40,16 +45,25 @@ bool OrderBook::reduce_order(uint64_t order_ref, uint32_t cancelled_shares){
     if(it == order_lookup.end()) return true;
     
     OrderMeta& order = it -> second;
+    uint32_t remove = std::min(cancelled_shares, order.shares);
 
-    auto& map = (order.side == 'B') ? bids : asks;
-
-    auto pit = map.find(order.price);
-    if(pit == map.end()) return true;
-
-    uint32_t remove = std::min(cancelled_shares, (uint32_t)std::min(pit -> second, (uint64_t) order.shares));
-
-    pit -> second -= remove;
-    if(pit -> second == 0) map.erase(pit);
+    if(order.side == 'B'){
+        auto pit = bids.find(order.price);
+        if(pit != bids.end()){
+            remove = std::min((uint64_t)remove, pit -> second);
+            pit -> second -= remove;
+            if(pit -> second == 0) bids.erase(pit);
+        }
+    }
+    
+    else{
+        auto pit = asks.find(order.price);
+        if(pit != asks.end()) {
+            remove = std::min((uint64_t)remove, pit -> second);
+            pit -> second -= remove;
+            if(pit -> second == 0) asks.erase(pit);
+        }
+    }
 
     order.shares -= remove;
     if(order.shares == 0){
@@ -66,33 +80,22 @@ void OrderBook::replace_order(uint64_t old_ref, uint64_t new_ref, uint32_t price
     add_order(new_ref, price, shares, side);
 }
 
-void OrderBook::print_top(int levels, int sock, const std::string& symbol, uint64_t timestamp_ns){
-    std::vector<uint32_t> ask_prices;
-    for(auto& [price, _] : asks) ask_prices.push_back(price);
-    std::sort(ask_prices.begin(), ask_prices.end());
-
-    std::vector<uint32_t> bid_prices;
-    for(auto& [price, _] : bids) bid_prices.push_back(price);
-    std::sort(bid_prices.begin(), bid_prices.end(), std::greater<uint32_t>());
-
-    std::string json = "{\"symbol\":\"" + symbol + "\","
-                   "\"ts\":" + std::to_string(timestamp_ns) + ","
-                   "\"asks\":[";
-    int cnt = 0;
-    for(uint32_t price : ask_prices){
-        if(cnt++ >= levels) break;
-        if(cnt > 1) json += ",";
-        json += "[" + std::to_string(price / 10000.0) + "," + std::to_string(asks[price]) + "]";
+void OrderBook::fill_snapshot(int levels, const std::string& symbol, uint64_t timestamp_ns, BookSnapshot& snap){
+    snap.timestamp_ns = timestamp_ns;
+    std::memset(snap.symbol, ' ', 8);
+    std::memcpy(snap.symbol, symbol.c_str(), std::min((size_t) 8, symbol.size()));
+    
+    snap.num_asks = 0;
+    for(auto it = asks.begin(); it != asks.end() && snap.num_asks < levels; ++it){
+        snap.asks[snap.num_asks].price = it -> first;
+        snap.asks[snap.num_asks].shares = it -> second;
+        snap.num_asks++;
     }
-    json += "],\"bids\":[";
-    cnt = 0;
-    for(uint32_t price : bid_prices){
-        if(cnt++ >= levels) break;
-        if(cnt > 1) json += ",";
-        json += "[" + std::to_string(price / 10000.0) + "," + std::to_string(bids[price]) + "]";
+    
+    snap.num_bids = 0;
+    for(auto it = bids.begin(); it != bids.end() && snap.num_bids < levels; ++it){
+        snap.bids[snap.num_bids].price = it -> first;
+        snap.bids[snap.num_bids].shares = it -> second;
+        snap.num_bids++;
     }
-    json += "]}\n";
-
-    ssize_t written = write(sock, json.c_str(), json.size());
-    if(written < 0) std::cerr << "Write Failed: " << strerror(errno) << "\n";
 }

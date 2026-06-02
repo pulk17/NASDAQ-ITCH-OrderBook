@@ -10,7 +10,10 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <thread>
+#include <atomic>
 
+#include "spsc_queue.hpp"
 #include "messages.hpp"
 #include "orderbook.hpp"
 
@@ -50,6 +53,18 @@ int main(){
 
     uint16_t aapl_locate = 0;
     auto last_snapshot = starttime;
+    
+    SPSCQueue<BookSnapshot, 1024> snapshot_queue;
+    std::atomic<bool> engine_running{true};
+    
+    std::thread publisher_thread([&] (){
+        BookSnapshot local_snap;
+        while(engine_running.load(std::memory_order_relaxed)){
+            if(snapshot_queue.pop(local_snap)){
+                write(sock, &local_snap, sizeof(BookSnapshot));
+            }
+        }
+    });
 
     while(ptr+2 <= end){
         
@@ -170,7 +185,9 @@ int main(){
                 for(int i = 0; i < 6; i++)
                     ts = (ts << 8) | (uint8_t)buffer[5+i];
                     
-                books[aapl_locate].print_top(5, sock);
+                BookSnapshot snap;
+                books[aapl_locate].fill_snapshot(5, "AAPL", ts, snap);
+                snapshot_queue.push(snap);
                 last_snapshot = now;
             }
         }
@@ -194,6 +211,9 @@ int main(){
     double seconds = std::chrono::duration<double>(endtime - starttime).count();
     std::cout << "Processed " << message_count << " messages in " << seconds << "s\n";
     std::cout << "Throughput: " << (message_count / seconds) / 1e6 << " M msg/sec \n";
+    
+    engine_running.store(false, std::memory_order_release);
+    publisher_thread.join();
 
     return 0;
 }
