@@ -1,25 +1,22 @@
-const net = require('net');
+const dgram = require('dgram');
 const WebSocket = require('ws');
-const fs = require('fs');
 
-const wss = new WebSocket.Server({ port: 8080 });
+const wss = new WebSocket.Server({ port : 8080});
 
-const SOCKET_PATH = '/tmp/orderbook.sock';
+const udpServer = dgram.createSocket('udp4');
 
-if (fs.existsSync(SOCKET_PATH)) fs.unlinkSync(SOCKET_PATH);
-
-const server = net.createServer((socket) => {
-    console.log('C++ engine connected'); 
-    socket.on('data', (chunk) => {
-        console.log('data received, bytes:', chunk.length);
-        wss.clients.forEach((client) => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(chunk.toString());
-            }
-        });
+udpServer.on('message', (msg, rinfo) => {
+    wss.clients.forEach((client) => {
+        if(client.readyState === WebSocket.OPEN) {
+            client.send(msg);
+        }
     });
 });
 
-server.listen(SOCKET_PATH, () => {
-    console.log(`Server listening on ${SOCKET_PATH}`);
+udpServer.on('listening', () => {
+    const address = udpServer.address();
+    console.log(`UDP server listening on ${address.address}:${address.port}`);
+    console.log('WebSocket server listening on port 8080');
 });
+
+udpServer.bind(12345, '127.0.0.1');

@@ -12,6 +12,9 @@
 #include <unistd.h>
 #include <thread>
 #include <atomic>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
 
 #include "spsc_queue.hpp"
 #include "messages.hpp"
@@ -28,17 +31,17 @@ int main(){
     const uint8_t* end = data + file_size; 
     madvise((void*)data, file_size, MADV_SEQUENTIAL);
 
-    int sock = socket(AF_UNIX, SOCK_STREAM, 0);
-
-    struct sockaddr_un addr;
-    addr.sun_family = AF_UNIX;
-    strcpy(addr.sun_path, "/tmp/orderbook.sock");
-
-    int connection = connect(sock, (struct sockaddr*)&addr, sizeof(addr));
-    if(connection < 0){
-        std::cerr << "Socket connect failed: " << strerror(errno) << "\n";
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if(sock < 0) {
+        std::cerr << "UDP Socket creation failed: " << strerror(errno) << "\n";
         return 1;
     }
+    
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(12345);
+    addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     
     std::array<std::string, 65536> locate_to_symbol;
     ankerl::unordered_dense::map<std::string, uint16_t> symbol_to_locate;
@@ -61,7 +64,10 @@ int main(){
         BookSnapshot local_snap;
         while(engine_running.load(std::memory_order_relaxed)){
             if(snapshot_queue.pop(local_snap)){
-                write(sock, &local_snap, sizeof(BookSnapshot));
+                ssize_t written = sendto(sock, &local_snap, sizeof(BookSnapshot), 0, (struct sockaddr*)& addr, sizeof(addr));
+                if(written < 0){
+                    std::cerr << "UDP Send Failed\n";
+                }
             }
         }
     });
