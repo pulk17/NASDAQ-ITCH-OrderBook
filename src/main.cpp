@@ -15,13 +15,29 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <pthread.h>
+#include <sched.h>
 
 #include "spsc_queue.hpp"
 #include "messages.hpp"
 #include "orderbook.hpp"
 
-int main(){
+inline void pin_thread_to_core(int core_id) {
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(core_id, &cpuset);
+    
+    pthread_t current_thread = pthread_self();
+    int result = pthread_setaffinity_np(current_thread, sizeof(cpu_set_t), &cpuset);
+    
+    if(result != 0) std::cerr << "Warning: Failed to pin thread to core " << core_id << " (Do you have enough cores?)\n";
+    else std::cout << "Successfully pinned thread " << current_thread << " to CPU core " << core_id << "\n";
+}
 
+int main(){
+    
+    pin_thread_to_core(1);
+    
     int fd = open("/home/pulk1t/LOB/12302019.NASDAQ_ITCH50", O_RDONLY);
     struct stat st;
     fstat(fd, &st);
@@ -59,8 +75,10 @@ int main(){
     
     SPSCQueue<BookSnapshot, 1024> snapshot_queue;
     std::atomic<bool> engine_running{true};
-    
+        
     std::thread publisher_thread([&] (){
+        pin_thread_to_core(2);
+        
         BookSnapshot local_snap;
         while(engine_running.load(std::memory_order_relaxed)){
             if(snapshot_queue.pop(local_snap)){
