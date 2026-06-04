@@ -18,18 +18,19 @@ struct BookSnapshot{
     PriceLevel asks[5];
     PriceLevel bids[5];
 };
-#pragma pack(1)
+#pragma pack()
 
 struct OrderMeta{
     uint32_t price;
     uint32_t shares;
-    char side;
+    char     side;
 };
 
 struct OrderBook{
-   std::map<uint32_t, uint64_t, std::greater<uint32_t>> bids;
-   std::map<uint32_t, uint64_t, std::less<uint32_t>> asks;
    ankerl::unordered_dense::map<uint64_t, OrderMeta> order_lookup;
+   
+   std::vector<PriceLevel> bids;
+   std::vector<PriceLevel> asks;
 
     OrderBook();
     void add_order(uint64_t order_ref, uint32_t price, uint32_t shares, char side);
