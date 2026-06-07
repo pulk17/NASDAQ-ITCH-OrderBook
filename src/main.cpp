@@ -77,7 +77,6 @@ int main(){
     std::atomic<bool> engine_running{true};
         
     std::thread publisher_thread([&] (){
-        pin_thread_to_core(2);
         
         BookSnapshot local_snap;
         while(engine_running.load(std::memory_order_relaxed)){
@@ -87,6 +86,7 @@ int main(){
                     std::cerr << "UDP Send Failed\n";
                 }
             }
+            else std::this_thread::yield();
         }
     });
 
@@ -133,7 +133,6 @@ int main(){
                 uint32_t executed_shares = __builtin_bswap32(msg->executed_shares);
                 auto it = ref_to_locate.find(order_ref);
                 if(it != ref_to_locate.end()){
-                    books[it->second].reduce_order(order_ref, executed_shares);
                     if(books[it->second].reduce_order(order_ref, executed_shares))
                         ref_to_locate.erase(it);
                 }
@@ -209,7 +208,7 @@ int main(){
                 for(int i = 0; i < 6; i++)
                     ts = (ts << 8) | (uint8_t)buffer[5+i];
                     
-                BookSnapshot snap;
+                BookSnapshot snap = {};
                 books[aapl_locate].fill_snapshot(5, "AAPL", ts, snap);
                 snapshot_queue.push(snap);
                 last_snapshot = now;
@@ -238,6 +237,10 @@ int main(){
     
     engine_running.store(false, std::memory_order_release);
     publisher_thread.join();
+    
+    munmap((void*)data, file_size);
+    close(fd);
+    close(sock);
 
     return 0;
 }

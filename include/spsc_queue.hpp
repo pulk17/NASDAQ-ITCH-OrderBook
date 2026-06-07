@@ -29,7 +29,7 @@ public:
     bool pop(T& item){
         const size_t current_tail = tail_.load(std::memory_order_relaxed);
         
-        if(current_tail == head_.load(std::memory_order_acquire)) false;
+        if(current_tail == head_.load(std::memory_order_acquire)) return false;
         
         item = buffer_[current_tail];
         

@@ -12,6 +12,7 @@ struct PriceLevel{
 
 struct BookSnapshot{
     uint64_t timestamp_ns;
+    int32_t  ofi;
     char     symbol[8];
     uint8_t  num_asks;
     uint8_t  num_bids;
@@ -31,6 +32,11 @@ struct OrderBook{
    
    std::vector<PriceLevel> bids;
    std::vector<PriceLevel> asks;
+   
+   uint32_t prev_bb_price = 0;
+   uint32_t prev_bb_shares = 0;
+   uint32_t prev_ba_price = 0;
+   uint32_t prev_ba_shares = 0;
 
     OrderBook();
     void add_order(uint64_t order_ref, uint32_t price, uint32_t shares, char side);
