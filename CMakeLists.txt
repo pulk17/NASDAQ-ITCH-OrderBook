@@ -12,3 +12,4 @@ add_executable(orderbook
 
 target_include_directories(orderbook PRIVATE include third_party/unordered_dense/include)
 target_compile_options(orderbook PRIVATE -O3 -march=native)
+target_link_libraries(orderbook PRIVATE pthread)

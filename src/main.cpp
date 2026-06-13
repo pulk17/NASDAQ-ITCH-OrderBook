@@ -145,7 +145,6 @@ int main(){
                 uint32_t cancelled_shares = __builtin_bswap32(msg->cancelled_shares);
                 auto it = ref_to_locate.find(order_ref);
                 if(it != ref_to_locate.end()){
-                    books[it->second].reduce_order(order_ref, cancelled_shares);
                     if(books[it->second].reduce_order(order_ref, cancelled_shares))
                         ref_to_locate.erase(it);
                 }
