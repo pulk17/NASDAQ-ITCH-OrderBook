@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cstdint>
+#include <cstring>
 #include <array>
 #include <string> 
 #include <chrono>
@@ -34,15 +35,43 @@ inline void pin_thread_to_core(int core_id) {
     else std::cout << "Successfully pinned thread " << current_thread << " to CPU core " << core_id << "\n";
 }
 
-int main(){
-    
+int main(int argc, char** argv){
+
+    if(argc < 2){
+        std::cerr << "Usage: " << argv[0] << " <path-to-itch-file>\n";
+        return 1;
+    }
+    const char* itch_path = argv[1];
+
     pin_thread_to_core(1);
-    
-    int fd = open("/home/pulk1t/LOB/12302019.NASDAQ_ITCH50", O_RDONLY);
+
+    int fd = open(itch_path, O_RDONLY);
+    if(fd < 0){
+        std::cerr << "Failed to open '" << itch_path << "': " << strerror(errno) << "\n";
+        return 1;
+    }
+
     struct stat st;
-    fstat(fd, &st);
+    if(fstat(fd, &st) < 0){
+        std::cerr << "fstat failed on '" << itch_path << "': " << strerror(errno) << "\n";
+        close(fd);
+        return 1;
+    }
+
     size_t file_size = st.st_size;
-    const uint8_t* data = (const uint8_t*) mmap (nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    if(file_size == 0){
+        std::cerr << "'" << itch_path << "' is empty\n";
+        close(fd);
+        return 1;
+    }
+
+    const uint8_t* data = (const uint8_t*) mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    if(data == MAP_FAILED){
+        std::cerr << "mmap failed: " << strerror(errno) << "\n";
+        close(fd);
+        return 1;
+    }
+
     const uint8_t* ptr = data;
     const uint8_t* end = data + file_size; 
     madvise((void*)data, file_size, MADV_SEQUENTIAL);

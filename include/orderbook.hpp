@@ -37,6 +37,7 @@ struct OrderBook{
    uint32_t prev_bb_shares = 0;
    uint32_t prev_ba_price = 0;
    uint32_t prev_ba_shares = 0;
+   int64_t ofi_accumulator = 0;
 
     OrderBook();
     void add_order(uint64_t order_ref, uint32_t price, uint32_t shares, char side);
@@ -44,4 +45,10 @@ struct OrderBook{
     bool reduce_order(uint64_t order_ref, uint32_t cancelled_shares);
     void replace_order(uint64_t old_ref, uint64_t new_ref, uint32_t price, uint32_t shares);
     void fill_snapshot(int levels, const std::string& symbol, uint64_t timestamp_ns, BookSnapshot& snap);
+
+private:
+    // Recomputes the Cont-Kukanov-Stoikov OFI contribution for the single
+    // event that just happened (best bid/ask now vs prev_*), adds it to
+    // ofi_accumulator, then updates prev_* for the next call.
+    void update_ofi();
 };
