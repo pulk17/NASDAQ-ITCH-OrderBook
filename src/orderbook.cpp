@@ -1,5 +1,6 @@
 #include <iostream>
 #include <algorithm>
+#include <cassert>
 #include <unistd.h>
 
 #include "orderbook.hpp"
@@ -77,9 +78,15 @@ bool OrderBook::reduce_order(uint64_t order_ref, uint32_t cancelled_shares){
         });
         
         if(pit != bids.end() && pit -> price == order.price){
+            
+            assert(remove <= pit -> shares && "reduce_order: bid level < order shares (book desync)");
+
             uint32_t actual_remove = std::min(remove, pit -> shares);
             pit -> shares -= actual_remove;
             if(pit -> shares == 0) bids.erase(pit);
+        }
+        else {
+            assert(false && "reduce_order: bid level missing for a live order (book desync)");
         }
     }
     
@@ -89,9 +96,15 @@ bool OrderBook::reduce_order(uint64_t order_ref, uint32_t cancelled_shares){
         });
         
         if(pit != asks.end() && pit -> price == order.price) {
+
+            assert(remove <= pit -> shares && "reduce_order: ask level < order shares (book desync)");
+
             uint32_t actual_remove = std::min(remove, pit -> shares);
             pit -> shares -= actual_remove;
             if(pit -> shares == 0) asks.erase(pit);
+        }
+        else {
+            assert(false && "reduce_order: ask level missing for a live order (book desync)");
         }
     }
 

@@ -97,7 +97,7 @@ int main(int argc, char** argv){
     ref_to_locate.reserve(8000000);
 
     auto starttime = std::chrono::high_resolution_clock::now();
-    int message_count = 0;
+    uint64_t message_count = 0;
 
     uint16_t aapl_locate = 0;
     auto last_snapshot = starttime;
@@ -123,6 +123,9 @@ int main(int argc, char** argv){
         
         uint16_t length = __builtin_bswap16(*reinterpret_cast<const uint16_t*>(ptr));
         ptr += 2; // exactly 2 bytes to correctly parse the binary
+
+        if (length == 0 || ptr + length > end) break;
+
         const char* buffer = reinterpret_cast<const char*>(ptr);
         ptr += length;
 
