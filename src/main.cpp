@@ -22,6 +22,7 @@
 #include "spsc_queue.hpp"
 #include "messages.hpp"
 #include "orderbook.hpp"
+#include "bench.hpp"
 
 inline void pin_thread_to_core(int core_id) {
     cpu_set_t cpuset;
@@ -42,6 +43,11 @@ int main(int argc, char** argv){
         return 1;
     }
     const char* itch_path = argv[1];
+
+    bool bench_mode = false;
+    for (int i = 2; i < argc; ++i) {
+        if (std::string(argv[1]) == "--bench") bench_mode = true;
+    }
 
     pin_thread_to_core(1);
 
@@ -96,6 +102,10 @@ int main(int argc, char** argv){
     ankerl::unordered_dense::map<uint64_t, uint16_t> ref_to_locate;
     ref_to_locate.reserve(8000000);
 
+    LatencyBench bench;
+    constexpr uint64_t BENCH_WARMUP = 100000;
+    if (bench_mode) bench.calibrate();
+
     auto starttime = std::chrono::high_resolution_clock::now();
     uint64_t message_count = 0;
 
@@ -131,6 +141,9 @@ int main(int argc, char** argv){
 
         char msg_type = buffer[0];
 
+        uint64_t t0 = 0;
+        if (bench_mode) t0 = rdtsc_start();
+
         switch(msg_type){
             case 'A': {
                 const AddOrder* msg = reinterpret_cast<const AddOrder*>(buffer);
@@ -160,9 +173,12 @@ int main(int argc, char** argv){
 
             case 'E':
             case 'C': {
-                const OrderExecuted* msg = reinterpret_cast<const OrderExecuted*>(buffer);
-                uint64_t order_ref = __builtin_bswap64(msg->order_ref);
-                uint32_t executed_shares = __builtin_bswap32(msg->executed_shares);
+                const OrderExecutedWithPrice* msg = reinterpret_cast<const OrderExecutedWithPrice*>(buffer);
+                uint64_t order_ref          = __builtin_bswap64(msg->order_ref);
+                uint32_t executed_shares    = __builtin_bswap32(msg->executed_shares);
+                uint32_t exec_price         = __builtin_bswap32(msg->execution_price);
+                bool printable              = (msg->printable == 'Y');
+
                 auto it = ref_to_locate.find(order_ref);
                 if(it != ref_to_locate.end()){
                     if(books[it->second].reduce_order(order_ref, executed_shares))
@@ -226,6 +242,9 @@ int main(int argc, char** argv){
 
         }
 
+        if (bench_mode && message_count >= BENCH_WARMUP)
+            bench.record(rdtsc_end() - t0);
+
         if(aapl_locate == 0){
             auto it = symbol_to_locate.find("AAPL");
             if(it != symbol_to_locate.end()) aapl_locate = it -> second;
@@ -265,6 +284,8 @@ int main(int argc, char** argv){
     double seconds = std::chrono::duration<double>(endtime - starttime).count();
     std::cout << "Processed " << message_count << " messages in " << seconds << "s\n";
     std::cout << "Throughput: " << (message_count / seconds) / 1e6 << " M msg/sec \n";
+
+    if(bench_mode) bench.report();
     
     engine_running.store(false, std::memory_order_release);
     publisher_thread.join();
