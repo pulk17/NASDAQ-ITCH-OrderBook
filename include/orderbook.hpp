@@ -1,8 +1,8 @@
 #pragma once
 #include <cstdint>
 #include <vector>
-#include <map>
-#include <ankerl/unordered_dense.h>
+#include <string>
+#include <cstring>
 
 #pragma pack(1)
 struct PriceLevel{
@@ -21,34 +21,27 @@ struct BookSnapshot{
 };
 #pragma pack()
 
-struct OrderMeta{
+struct OrderInfo{
     uint32_t price;
     uint32_t shares;
+    uint16_t locate;
     char     side;
 };
 
 struct OrderBook{
-   ankerl::unordered_dense::map<uint64_t, OrderMeta> order_lookup;
-   
-   std::vector<PriceLevel> bids;
-   std::vector<PriceLevel> asks;
-   
-   uint32_t prev_bb_price = 0;
-   uint32_t prev_bb_shares = 0;
-   uint32_t prev_ba_price = 0;
-   uint32_t prev_ba_shares = 0;
-   int64_t ofi_accumulator = 0;
+    std::vector<PriceLevel> bids;   // descending by price (best = front)
+    std::vector<PriceLevel> asks;   // ascending  by price (best = front)
 
-    OrderBook();
-    void add_order(uint64_t order_ref, uint32_t price, uint32_t shares, char side);
-    void delete_order(uint64_t order_ref);
-    bool reduce_order(uint64_t order_ref, uint32_t cancelled_shares);
-    void replace_order(uint64_t old_ref, uint64_t new_ref, uint32_t price, uint32_t shares);
+    uint32_t prev_bb_price = 0;
+    uint32_t prev_bb_shares = 0;
+    uint32_t prev_ba_price = 0;
+    uint32_t prev_ba_shares = 0;
+    int64_t  ofi_accumulator = 0;
+
+    void add(uint32_t price, uint32_t shares, char side);
+    void remove(uint32_t price, uint32_t shares, char side);
     void fill_snapshot(int levels, const std::string& symbol, uint64_t timestamp_ns, BookSnapshot& snap);
 
 private:
-    // Recomputes the Cont-Kukanov-Stoikov OFI contribution for the single
-    // event that just happened (best bid/ask now vs prev_*), adds it to
-    // ofi_accumulator, then updates prev_* for the next call.
     void update_ofi();
 };

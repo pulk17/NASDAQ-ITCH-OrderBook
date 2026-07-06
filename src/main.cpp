@@ -23,6 +23,7 @@
 #include "messages.hpp"
 #include "orderbook.hpp"
 #include "bench.hpp"
+#include <ankerl/unordered_dense.h>
 
 inline void pin_thread_to_core(int core_id) {
     cpu_set_t cpuset;
@@ -45,8 +46,10 @@ int main(int argc, char** argv){
     const char* itch_path = argv[1];
 
     bool bench_mode = false;
-    for (int i = 2; i < argc; ++i) {
-        if (std::string(argv[1]) == "--bench") bench_mode = true;
+    bool measure_window = false;
+    for(int i = 2; i < argc; i++){
+        if(std::string(argv[i]) == "--bench") bench_mode = true;
+        if(std::string(argv[i]) == "--window-histo") measure_window = true;
     }
 
     pin_thread_to_core(1);
@@ -97,14 +100,30 @@ int main(int argc, char** argv){
     std::array<std::string, 65536> locate_to_symbol;
     ankerl::unordered_dense::map<std::string, uint16_t> symbol_to_locate;
 
-    auto books = std::make_unique<OrderBook[]>(65536);  //transfer from stack to heap [65536 is the max size of uint16_t]
+    auto books = std::make_unique<OrderBook[]>(65536);
 
-    ankerl::unordered_dense::map<uint64_t, uint16_t> ref_to_locate;
-    ref_to_locate.reserve(8000000);
+    ankerl::unordered_dense::map<uint64_t, OrderInfo> orders;
+    orders.max_load_factor(0.5);
+    orders.reserve(8000000);   
 
     LatencyBench bench;
-    constexpr uint64_t BENCH_WARMUP = 100000;
-    if (bench_mode) bench.calibrate();
+    constexpr uint64_t BENCH_WARMUP = 100000;   // discard cold-cache/branch-predictor warmup
+    if(bench_mode) bench.calibrate();
+
+    constexpr uint32_t HISTMAX = 4096;                 // ticks; farther = "stub", lumped in overflow
+    std::vector<uint64_t> tick_hist(HISTMAX, 0);
+    uint64_t wh_total = 0, wh_overflow = 0, wh_subpenny = 0, wh_nomid = 0;
+
+    auto record_add_distance = [&](const OrderBook& bk, uint32_t evt_price){
+        if(bk.bids.empty() || bk.asks.empty()){ wh_nomid++; return; }  // no two-sided mid yet
+        uint64_t mid  = ((uint64_t)bk.bids[0].price + bk.asks[0].price) / 2;
+        uint64_t dist = (evt_price > mid) ? (evt_price - mid) : (mid - evt_price);
+        uint64_t ticks = dist / 100;
+        wh_total++;
+        if(evt_price % 100 != 0) wh_subpenny++;
+        if(ticks >= HISTMAX) wh_overflow++;
+        else tick_hist[ticks]++;
+    };
 
     auto starttime = std::chrono::high_resolution_clock::now();
     uint64_t message_count = 0;
@@ -134,7 +153,7 @@ int main(int argc, char** argv){
         uint16_t length = __builtin_bswap16(*reinterpret_cast<const uint16_t*>(ptr));
         ptr += 2; // exactly 2 bytes to correctly parse the binary
 
-        if (length == 0 || ptr + length > end) break;
+        if(length == 0 || ptr + length > end) break;
 
         const char* buffer = reinterpret_cast<const char*>(ptr);
         ptr += length;
@@ -142,7 +161,7 @@ int main(int argc, char** argv){
         char msg_type = buffer[0];
 
         uint64_t t0 = 0;
-        if (bench_mode) t0 = rdtsc_start();
+        if(bench_mode) t0 = rdtsc_start();
 
         switch(msg_type){
             case 'A': {
@@ -153,8 +172,9 @@ int main(int argc, char** argv){
                 uint64_t order_ref = __builtin_bswap64(msg -> order_ref);
                 uint16_t stock_locate = __builtin_bswap16(msg -> stock_locate); 
 
-                books[stock_locate].add_order(order_ref, price, shares, msg->side);
-                ref_to_locate[order_ref] = stock_locate;
+                if(measure_window) record_add_distance(books[stock_locate], price);
+                books[stock_locate].add(price, shares, msg->side);
+                orders[order_ref] = {price, shares, stock_locate, msg->side};
 
                 break;
             }
@@ -165,24 +185,26 @@ int main(int argc, char** argv){
                 uint32_t shares = __builtin_bswap32(msg->shares);
                 uint64_t order_ref = __builtin_bswap64(msg->order_ref);
                 uint16_t stock_locate = __builtin_bswap16(msg->stock_locate);
-                books[stock_locate].add_order(order_ref, price, shares, msg->side);
-                ref_to_locate[order_ref] = stock_locate;
+
+                if(measure_window) record_add_distance(books[stock_locate], price);
+                books[stock_locate].add(price, shares, msg->side);
+                orders[order_ref] = {price, shares, stock_locate, msg->side};
 
                 break;
             }
 
             case 'E':
             case 'C': {
-                const OrderExecutedWithPrice* msg = reinterpret_cast<const OrderExecutedWithPrice*>(buffer);
-                uint64_t order_ref          = __builtin_bswap64(msg->order_ref);
-                uint32_t executed_shares    = __builtin_bswap32(msg->executed_shares);
-                uint32_t exec_price         = __builtin_bswap32(msg->execution_price);
-                bool printable              = (msg->printable == 'Y');
-
-                auto it = ref_to_locate.find(order_ref);
-                if(it != ref_to_locate.end()){
-                    if(books[it->second].reduce_order(order_ref, executed_shares))
-                        ref_to_locate.erase(it);
+                const OrderExecuted* msg = reinterpret_cast<const OrderExecuted*>(buffer);
+                uint64_t order_ref = __builtin_bswap64(msg->order_ref);
+                uint32_t executed_shares = __builtin_bswap32(msg->executed_shares);
+                auto it = orders.find(order_ref);
+                if(it != orders.end()){
+                    OrderInfo& info = it->second;
+                    uint32_t r = std::min(executed_shares, info.shares);
+                    books[info.locate].remove(info.price, r, info.side);
+                    info.shares -= r;
+                    if(info.shares == 0) orders.erase(it);
                 }
                 break;
             }
@@ -191,10 +213,13 @@ int main(int argc, char** argv){
                 const OrderCancel* msg = reinterpret_cast<const OrderCancel*>(buffer);
                 uint64_t order_ref = __builtin_bswap64(msg->order_ref);
                 uint32_t cancelled_shares = __builtin_bswap32(msg->cancelled_shares);
-                auto it = ref_to_locate.find(order_ref);
-                if(it != ref_to_locate.end()){
-                    if(books[it->second].reduce_order(order_ref, cancelled_shares))
-                        ref_to_locate.erase(it);
+                auto it = orders.find(order_ref);
+                if(it != orders.end()){
+                    OrderInfo& info = it->second;
+                    uint32_t r = std::min(cancelled_shares, info.shares);
+                    books[info.locate].remove(info.price, r, info.side);
+                    info.shares -= r;
+                    if(info.shares == 0) orders.erase(it);
                 }
                 break;
             }   
@@ -202,12 +227,13 @@ int main(int argc, char** argv){
             case 'D': {
                 const DeleteOrder* msg = reinterpret_cast<const DeleteOrder*>(buffer);
                 uint64_t order_ref = __builtin_bswap64(msg->order_ref);
-                auto it = ref_to_locate.find(order_ref);
-                if(it != ref_to_locate.end()){
-                    books[it->second].delete_order(order_ref);
-                    ref_to_locate.erase(it);
+                auto it = orders.find(order_ref);
+                if(it != orders.end()){
+                    OrderInfo& info = it->second;
+                    books[info.locate].remove(info.price, info.shares, info.side);
+                    orders.erase(it);
                 }
-                
+
                 break;
             }
 
@@ -217,12 +243,15 @@ int main(int argc, char** argv){
                 uint64_t new_ref = __builtin_bswap64(msg->new_order_ref);
                 uint32_t price = __builtin_bswap32(msg->price);
                 uint32_t shares = __builtin_bswap32(msg->shares);
-                auto it = ref_to_locate.find(old_ref);
-                if(it != ref_to_locate.end()){
-                    uint16_t stock_locate = it->second;
-                    books[stock_locate].replace_order(old_ref, new_ref, price, shares);
-                    ref_to_locate.erase(it);
-                    ref_to_locate[new_ref] = stock_locate;
+                auto it = orders.find(old_ref);
+                if(it != orders.end()){
+                    // Copy out before erasing/inserting: orders[new_ref] below may
+                    // rehash and invalidate both `it` and any reference into the map.
+                    OrderInfo old = it->second;
+                    books[old.locate].remove(old.price, old.shares, old.side);
+                    orders.erase(it);
+                    books[old.locate].add(price, shares, old.side);   // replace keeps side + book
+                    orders[new_ref] = {price, shares, old.locate, old.side};
                 }
 
                 break;
@@ -242,7 +271,7 @@ int main(int argc, char** argv){
 
         }
 
-        if (bench_mode && message_count >= BENCH_WARMUP)
+        if(bench_mode && message_count >= BENCH_WARMUP)
             bench.record(rdtsc_end() - t0);
 
         if(aapl_locate == 0){
@@ -268,6 +297,38 @@ int main(int argc, char** argv){
         message_count++;
     }
 
+    {
+        uint64_t fp = 1469598103934665603ULL;
+        for(uint32_t l = 0; l < 65536; l++){
+            for(const auto& lvl : books[l].bids){
+                fp ^= ((uint64_t)l << 40) ^ ((uint64_t)lvl.price << 8) ^ lvl.shares; fp *= 1099511628211ULL;
+            }
+            for(const auto& lvl : books[l].asks){
+                fp ^= ((uint64_t)l << 40) ^ ((uint64_t)lvl.price << 8) ^ lvl.shares; fp *= 1099511628211ULL;
+            }
+        }
+        std::cout << "Book fingerprint: " << fp << "\n";
+    }
+
+    if(measure_window){
+        uint64_t denom = wh_total;
+        auto pct_within = [&](uint32_t W)->double{
+            uint64_t c = 0;
+            for(uint32_t t = 0; t < W && t < HISTMAX; t++) c += tick_hist[t];
+            return denom ? 100.0 * c / denom : 0.0;
+        };
+        std::cout << "\n=== add-price distance from mid (1 tick = 1 cent) ===\n";
+        std::cout << "  adds measured : " << wh_total << "\n";
+        std::cout << "  sub-penny     : " << wh_subpenny
+                  << " (" << (denom ? 100.0*wh_subpenny/denom : 0.0) << "%)\n";
+        std::cout << "  one-sided(no mid): " << wh_nomid << "\n";
+        for(uint32_t W : {16u, 32u, 64u, 128u, 256u, 512u, 1024u, 2048u})
+            std::cout << "  within +/-" << W << " ticks ($" << W/100.0 << ") : "
+                      << pct_within(W) << "%\n";
+        std::cout << "  beyond +/-" << HISTMAX << " ticks : "
+                  << (denom ? 100.0*wh_overflow/denom : 0.0) << "%\n";
+    }
+
     std::cout << "Total symbols: " << symbol_to_locate.size() << "\n";
     std::cout << "AAPL locate: " << aapl_locate << "\n";
 
@@ -284,6 +345,7 @@ int main(int argc, char** argv){
     double seconds = std::chrono::duration<double>(endtime - starttime).count();
     std::cout << "Processed " << message_count << " messages in " << seconds << "s\n";
     std::cout << "Throughput: " << (message_count / seconds) / 1e6 << " M msg/sec \n";
+    std::cout << "Ingestion:  " << (file_size / seconds) / 1e6 << " MB/sec\n";
 
     if(bench_mode) bench.report();
     
