@@ -115,8 +115,9 @@ int main(int argc, char** argv){
     uint64_t wh_total = 0, wh_overflow = 0, wh_subpenny = 0, wh_nomid = 0;
 
     auto record_add_distance = [&](const OrderBook& bk, uint32_t evt_price){
-        if(bk.bids.empty() || bk.asks.empty()){ wh_nomid++; return; }  // no two-sided mid yet
-        uint64_t mid  = ((uint64_t)bk.bids[0].price + bk.asks[0].price) / 2;
+        PriceLevel bb = bk.best_bid(), ba = bk.best_ask();
+        if(bb.shares == 0 || ba.shares == 0){ wh_nomid++; return; }  // no two-sided mid yet
+        uint64_t mid  = ((uint64_t)bb.price + ba.price) / 2;
         uint64_t dist = (evt_price > mid) ? (evt_price - mid) : (mid - evt_price);
         uint64_t ticks = dist / 100;
         wh_total++;
@@ -245,8 +246,6 @@ int main(int argc, char** argv){
                 uint32_t shares = __builtin_bswap32(msg->shares);
                 auto it = orders.find(old_ref);
                 if(it != orders.end()){
-                    // Copy out before erasing/inserting: orders[new_ref] below may
-                    // rehash and invalidate both `it` and any reference into the map.
                     OrderInfo old = it->second;
                     books[old.locate].remove(old.price, old.shares, old.side);
                     orders.erase(it);
@@ -300,14 +299,31 @@ int main(int argc, char** argv){
     {
         uint64_t fp = 1469598103934665603ULL;
         for(uint32_t l = 0; l < 65536; l++){
-            for(const auto& lvl : books[l].bids){
+            for(const auto& lvl : books[l].all_bids()){
                 fp ^= ((uint64_t)l << 40) ^ ((uint64_t)lvl.price << 8) ^ lvl.shares; fp *= 1099511628211ULL;
             }
-            for(const auto& lvl : books[l].asks){
+            for(const auto& lvl : books[l].all_asks()){
                 fp ^= ((uint64_t)l << 40) ^ ((uint64_t)lvl.price << 8) ^ lvl.shares; fp *= 1099511628211ULL;
             }
         }
         std::cout << "Book fingerprint: " << fp << "\n";
+    }
+
+    {
+        uint64_t total_re = 0, total_fb = 0, worst_re = 0, worst_fb = 0;
+        uint16_t worst_re_loc = 0, worst_fb_loc = 0;
+        for(uint32_t l = 0; l < 65536; l++){
+            total_re += books[l].reanchor_count;
+            total_fb += books[l].fallback_ops;
+            if(books[l].reanchor_count > worst_re){ worst_re = books[l].reanchor_count; worst_re_loc = l; }
+            if(books[l].fallback_ops   > worst_fb){ worst_fb = books[l].fallback_ops;   worst_fb_loc = l; }
+        }
+        std::cout << "Re-anchors: " << total_re
+                  << " (worst: " << locate_to_symbol[worst_re_loc] << " = " << worst_re << ")\n";
+        std::cout << "Fallback ops: " << total_fb
+                  << " (worst: " << locate_to_symbol[worst_fb_loc] << " = " << worst_fb << ")\n";
+        std::cout << "AAPL re-anchors: " << books[aapl_locate].reanchor_count
+                  << ", fallback ops: " << books[aapl_locate].fallback_ops << "\n";
     }
 
     if(measure_window){
