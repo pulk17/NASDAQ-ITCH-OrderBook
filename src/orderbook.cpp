@@ -55,6 +55,7 @@ void OrderBook::reanchor(BookSide& s, bool is_bid, uint32_t center_tick){
     s.nonzero = 0;
     s.best_valid = false;
 
+    std::vector<PriceLevel> out;
     for(const auto& lvl : tmp){
         uint32_t tick = lvl.price / 100;
         if(lvl.price % 100 == 0 && s.in_window(tick)){
@@ -64,9 +65,12 @@ void OrderBook::reanchor(BookSide& s, bool is_bid, uint32_t center_tick){
                 s.best_tick = tick; s.best_valid = true;
             }
         } else {
-            fallback_insert(s.fallback, is_bid, lvl.price, lvl.shares);
+            out.push_back(lvl);
         }
     }
+    if(is_bid) std::sort(out.begin(), out.end(), [](const PriceLevel& a, const PriceLevel& b){ return a.price > b.price; });
+    else       std::sort(out.begin(), out.end(), [](const PriceLevel& a, const PriceLevel& b){ return a.price < b.price; });
+    s.fallback = std::move(out);
 
 #ifndef NDEBUG
     uint64_t total_after = 0;
@@ -87,8 +91,10 @@ void OrderBook::maybe_reanchor(BookSide& s, bool is_bid){
     }
     if(s.best_valid){
         uint32_t off = s.best_tick - s.base_tick;
-        if(off < BookSide::SPAN/8 || off >= BookSide::SPAN - BookSide::SPAN/8)
-            reanchor(s, is_bid, s.best_tick);
+        if(off < BookSide::SPAN/8 || off >= BookSide::SPAN - BookSide::SPAN/8){
+            uint32_t new_base = (s.best_tick > BookSide::SPAN/2) ? s.best_tick - BookSide::SPAN/2 : 0;
+            if(new_base != s.base_tick) reanchor(s, is_bid, s.best_tick);
+        }
     }
 }
 

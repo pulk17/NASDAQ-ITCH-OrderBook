@@ -23,6 +23,8 @@
 #include "messages.hpp"
 #include "orderbook.hpp"
 #include "bench.hpp"
+#include "source.hpp"
+#include "io_uring_source.hpp"
 #include <ankerl/unordered_dense.h>
 
 inline void pin_thread_to_core(int core_id) {
@@ -47,9 +49,13 @@ int main(int argc, char** argv){
 
     bool bench_mode = false;
     bool measure_window = false;
+    size_t chunk_size = 0;   // 0 = mmap whole file; >0 = ChunkedSource (framer test)
+    bool use_io_uring = false;
     for(int i = 2; i < argc; i++){
         if(std::string(argv[i]) == "--bench") bench_mode = true;
         if(std::string(argv[i]) == "--window-histo") measure_window = true;
+        if(std::string(argv[i]) == "--chunk" && i + 1 < argc) chunk_size = std::stoull(argv[++i]);
+        if(std::string(argv[i]) == "--io_uring") use_io_uring = true;
     }
 
     pin_thread_to_core(1);
@@ -100,16 +106,23 @@ int main(int argc, char** argv){
     std::array<std::string, 65536> locate_to_symbol;
     ankerl::unordered_dense::map<std::string, uint16_t> symbol_to_locate;
 
-    auto books = std::make_unique<OrderBook[]>(65536);
+    auto books = std::make_unique<OrderBook[]>(65536);  //transfer from stack to heap [65536 is the max size of uint16_t]
 
+    // One registry for every live order: ref -> {locate, price, shares, side}.
+    // Replaces BOTH the old global ref_to_locate and every book's order_lookup.
+    // Low load factor trades some memory for fewer collisions on the hot path.
     ankerl::unordered_dense::map<uint64_t, OrderInfo> orders;
     orders.max_load_factor(0.5);
-    orders.reserve(8000000);   
+    orders.reserve(8000000);   // ~peak live orders for a full day; tune to your file
 
     LatencyBench bench;
     constexpr uint64_t BENCH_WARMUP = 100000;   // discard cold-cache/branch-predictor warmup
     if(bench_mode) bench.calibrate();
 
+    // --- price-window measurement (only active with --window-histo) -----------
+    // For each add, record |add_price - mid| in ticks (1 tick = 1 cent = 100
+    // ITCH price units). Reveals how wide a near-mid window must be to capture
+    // most activity -> sizes the array-of-price-levels window empirically.
     constexpr uint32_t HISTMAX = 4096;                 // ticks; farther = "stub", lumped in overflow
     std::vector<uint64_t> tick_hist(HISTMAX, 0);
     uint64_t wh_total = 0, wh_overflow = 0, wh_subpenny = 0, wh_nomid = 0;
@@ -121,7 +134,7 @@ int main(int argc, char** argv){
         uint64_t dist = (evt_price > mid) ? (evt_price - mid) : (mid - evt_price);
         uint64_t ticks = dist / 100;
         wh_total++;
-        if(evt_price % 100 != 0) wh_subpenny++;
+        if(evt_price % 100 != 0) wh_subpenny++;         // can't sit in a penny-indexed array
         if(ticks >= HISTMAX) wh_overflow++;
         else tick_hist[ticks]++;
     };
@@ -149,15 +162,7 @@ int main(int argc, char** argv){
         }
     });
 
-    while(ptr+2 <= end){
-        
-        uint16_t length = __builtin_bswap16(*reinterpret_cast<const uint16_t*>(ptr));
-        ptr += 2; // exactly 2 bytes to correctly parse the binary
-
-        if(length == 0 || ptr + length > end) break;
-
-        const char* buffer = reinterpret_cast<const char*>(ptr);
-        ptr += length;
+    auto process_message = [&](const char* buffer){
 
         char msg_type = buffer[0];
 
@@ -249,7 +254,7 @@ int main(int argc, char** argv){
                     OrderInfo old = it->second;
                     books[old.locate].remove(old.price, old.shares, old.side);
                     orders.erase(it);
-                    books[old.locate].add(price, shares, old.side);   // replace keeps side + book
+                    books[old.locate].add(price, shares, old.side);
                     orders[new_ref] = {price, shares, old.locate, old.side};
                 }
 
@@ -294,7 +299,16 @@ int main(int argc, char** argv){
         }
             
         message_count++;
-    }
+    };
+
+    MmapSource    mmap_src(data, file_size);
+    ChunkedSource chunk_src(data, file_size, chunk_size ? chunk_size : 1);
+    IoUringSource iouring_src(fd, file_size);
+    ByteSource*   src;
+    if(use_io_uring)   src = &iouring_src;
+    else if(chunk_size) src = &chunk_src;
+    else                src = &mmap_src;
+    run_framed(*src, process_message);
 
     {
         uint64_t fp = 1469598103934665603ULL;
@@ -307,23 +321,6 @@ int main(int argc, char** argv){
             }
         }
         std::cout << "Book fingerprint: " << fp << "\n";
-    }
-
-    {
-        uint64_t total_re = 0, total_fb = 0, worst_re = 0, worst_fb = 0;
-        uint16_t worst_re_loc = 0, worst_fb_loc = 0;
-        for(uint32_t l = 0; l < 65536; l++){
-            total_re += books[l].reanchor_count;
-            total_fb += books[l].fallback_ops;
-            if(books[l].reanchor_count > worst_re){ worst_re = books[l].reanchor_count; worst_re_loc = l; }
-            if(books[l].fallback_ops   > worst_fb){ worst_fb = books[l].fallback_ops;   worst_fb_loc = l; }
-        }
-        std::cout << "Re-anchors: " << total_re
-                  << " (worst: " << locate_to_symbol[worst_re_loc] << " = " << worst_re << ")\n";
-        std::cout << "Fallback ops: " << total_fb
-                  << " (worst: " << locate_to_symbol[worst_fb_loc] << " = " << worst_fb << ")\n";
-        std::cout << "AAPL re-anchors: " << books[aapl_locate].reanchor_count
-                  << ", fallback ops: " << books[aapl_locate].fallback_ops << "\n";
     }
 
     if(measure_window){
@@ -348,7 +345,6 @@ int main(int argc, char** argv){
     std::cout << "Total symbols: " << symbol_to_locate.size() << "\n";
     std::cout << "AAPL locate: " << aapl_locate << "\n";
 
-    // Print a few symbols to sanity check
     int printed = 0;
     for(uint16_t i = 0; i < 65536 && printed < 10; i++){
         if(!locate_to_symbol[i].empty()){
