@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PitchFork · Backtest Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0A0D12; --panel:#0F141C; --line:#1B232F;
+    --text:#C9D1DC; --dim:#5F6B7A; --faint:#39424F;
+    --amber:#FFB454; --amber-dim:#8A6430;
+    --up:#3ECF8E; --down:#F1637A;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{background:var(--ink)}
+  body{
+    font-family:'IBM Plex Mono',monospace; color:var(--text);
+    max-width:1180px; margin:0 auto; padding:48px 32px 64px;
+    font-size:14px; line-height:1.5;
+  }
+  /* header */
+  header{display:flex; justify-content:space-between; align-items:baseline;
+         border-bottom:1px solid var(--line); padding-bottom:18px; margin-bottom:36px}
+  .brand{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:20px; letter-spacing:.04em}
+  .brand em{font-style:normal; color:var(--amber)}
+  .runline{color:var(--dim); font-size:12px}
+  .runline b{color:var(--text); font-weight:500}
+  /* verdict hero */
+  .verdict{display:grid; grid-template-columns:minmax(260px,340px) 1fr; gap:40px; align-items:end; margin-bottom:14px}
+  .hitrate{font-family:'Space Grotesk',sans-serif; font-weight:700;
+           font-size:clamp(64px,9vw,104px); line-height:.95; color:var(--amber);
+           text-shadow:0 0 40px rgba(255,180,84,.18)}
+  .hitlabel{color:var(--dim); font-size:12px; margin-top:10px; max-width:32ch}
+  .hitlabel b{color:var(--text); font-weight:500}
+  .versus{color:var(--faint); font-size:12px; padding-bottom:14px}
+  .versus .row{display:flex; justify-content:space-between; border-bottom:1px dashed var(--line); padding:7px 0}
+  .versus .row span:last-child{color:var(--text)}
+  /* charts */
+  .chart-wrap{background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:20px 20px 12px; margin-bottom:20px}
+  .chart-title{display:flex; justify-content:space-between; color:var(--dim); font-size:11px;
+               text-transform:uppercase; letter-spacing:.14em; margin-bottom:12px}
+  .chart-title .val{color:var(--amber); letter-spacing:0; text-transform:none}
+  canvas{display:block; width:100%}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:20px}
+  @media(max-width:860px){.grid2{grid-template-columns:1fr}.verdict{grid-template-columns:1fr}}
+  /* stats strip */
+  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1px;
+         background:var(--line); border:1px solid var(--line); border-radius:6px; overflow:hidden; margin-bottom:20px}
+  .stat{background:var(--panel); padding:16px 18px}
+  .stat .k{color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.12em}
+  .stat .v{font-size:22px; margin-top:6px; font-weight:600}
+  .stat .v.up{color:var(--up)} .stat .v.down{color:var(--down)} .stat .v.am{color:var(--amber)}
+  /* provenance */
+  footer{color:var(--faint); font-size:11px; border-top:1px solid var(--line);
+         padding-top:16px; display:flex; flex-wrap:wrap; gap:8px 28px}
+  footer b{color:var(--dim); font-weight:500}
+  .note{color:var(--faint); font-size:11px; margin:-8px 0 20px}
+  @media (prefers-reduced-motion: reduce){ .js-anim{animation:none!important} }
+  .sect{font-family:'Space Grotesk',sans-serif; font-weight:500; font-size:13px; color:var(--dim);
+        text-transform:uppercase; letter-spacing:.18em; margin:36px 0 16px}
+  .symrow select{
+    background:var(--panel); color:var(--amber); border:1px solid var(--line); border-radius:4px;
+    font:inherit; font-size:13px; padding:6px 10px; margin-bottom:10px; cursor:pointer}
+  table{width:100%; border-collapse:collapse; font-size:12.5px}
+  thead th{position:sticky; top:0; background:var(--panel); color:var(--dim); font-weight:500;
+    text-transform:uppercase; letter-spacing:.1em; font-size:10.5px; text-align:right;
+    padding:12px 14px; border-bottom:1px solid var(--line); cursor:pointer; user-select:none; white-space:nowrap}
+  thead th:first-child{text-align:left}
+  thead th.on{color:var(--amber)}
+  tbody td{padding:8px 14px; text-align:right; border-bottom:1px solid rgba(27,35,47,.5); white-space:nowrap}
+  tbody td:first-child{text-align:left; color:var(--text)}
+  tbody tr{color:var(--dim)}
+  tbody tr.det{cursor:pointer} tbody tr.det td:first-child{color:var(--amber)}
+  tbody tr:hover{background:rgba(255,180,84,.04)}
+  td.pos{color:var(--up)} td.neg{color:var(--down)}
+  .lbctl{display:flex;gap:16px;align-items:center;margin-bottom:10px;color:var(--dim);font-size:12px}
+  .lbctl input{background:var(--panel);border:1px solid var(--line);color:var(--text);
+    font:inherit;font-size:12.5px;padding:5px 9px;border-radius:4px;width:130px}
+  .lbctl input[type=number]{width:70px}
+  #lbcount{margin-left:auto}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">PITCHFORK<em>·</em>BACKTEST <a href="live.html" style="color:var(--amber);font-size:13px;text-decoration:none;margin-left:14px;border:1px solid var(--line);border-radius:4px;padding:4px 10px">live replay →</a></div>
+  <div class="runline" id="runline">loading run…</div>
+</header>
+
+<section class="verdict">
+  <div>
+    <div class="symrow"><select id="symsel"></select></div>
+    <div class="hitrate" id="hitrate">—</div>
+    <div class="hitlabel">directional hit-rate: sign of one interval's <b>order-flow imbalance</b>
+      predicting the <b>next</b> interval's mid-price move</div>
+  </div>
+  <div class="versus" id="versus"></div>
+</section>
+
+<div class="chart-wrap">
+  <div class="chart-title"><span>signal equity · long/short 1 share on sign(OFI), marked mid-to-mid</span>
+    <span class="val" id="pnlval"></span></div>
+  <canvas id="equity" height="300"></canvas>
+</div>
+<p class="note">amber = gross (marked mid-to-mid). dashed red = net of spread costs: every position change trades at the quoted half-spread. No fees, no market impact, full fill at touch.</p>
+
+<div class="grid2">
+  <div class="chart-wrap">
+    <div class="chart-title"><span>drawdown from peak</span><span class="val" id="ddval"></span></div>
+    <canvas id="dd" height="170"></canvas>
+  </div>
+  <div class="chart-wrap">
+    <div class="chart-title"><span>interval OFI vs next-interval mid move</span><span class="val" id="corrval"></span></div>
+    <canvas id="scatter" height="170"></canvas>
+  </div>
+</div>
+
+<div class="stats" id="stats"></div>
+
+<h2 class="sect">cross-section · every qualifying symbol, same signal, same day</h2>
+<div class="grid2">
+  <div class="chart-wrap">
+    <div class="chart-title"><span>predictive hit-rate distribution across symbols</span><span class="val" id="histval"></span></div>
+    <canvas id="hist" height="190"></canvas>
+  </div>
+  <div class="stats" id="portstats" style="margin:0; grid-template-columns:1fr 1fr; align-content:start"></div>
+</div>
+
+<div class="lbctl">
+  <input id="q" placeholder="search symbol…">
+  <label>min price $<input id="minpx" type="number" value="1" step="1"></label>
+  <label>min samples <input id="minn" type="number" value="30" step="10"></label>
+  <span id="lbcount"></span>
+</div>
+<div class="chart-wrap" style="padding:0; overflow:auto; max-height:480px">
+  <table id="lb">
+    <thead><tr id="lbhead"></tr></thead>
+    <tbody id="lbbody"></tbody>
+  </table>
+</div>
+
+<footer id="prov"></footer>
+
+<script>
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const AMBER=css('--amber'), UP=css('--up'), DOWN=css('--down'),
+      DIM=css('--dim'), FAINT=css('--faint'), LINE=css('--line');
+const fmt=(x,d=2)=>x.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function setupCanvas(id){
+  const c=document.getElementById(id), dpr=devicePixelRatio||1;
+  const w=c.clientWidth, h=+c.getAttribute('height');
+  c.width=w*dpr; c.height=h*dpr; c.style.height=h+'px';
+  const g=c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,w,h);
+  return {g,w,h};
+}
+
+let R, gen=0;   // gen cancels in-flight equity animations on symbol switch
+
+function renderDetail(sym){
+  const d = R.detail[sym], my = ++gen;
+
+  document.getElementById('runline').innerHTML =
+    `<b>${sym}</b> · every ${R.interval} updates · ${d.pre_n.toLocaleString()} predictive samples · ${(R.messages/1e6).toFixed(0)}M messages replayed`;
+  document.getElementById('hitrate').textContent = d.pre_hit.toFixed(2)+'%';
+
+  const se = 50/Math.sqrt(d.pre_n||1), sig = (d.pre_hit-50)/se;
+  document.getElementById('versus').innerHTML = `
+    <div class="row"><span>chance</span><span>50.00%</span></div>
+    <div class="row"><span>edge over chance</span><span>${(d.pre_hit-50).toFixed(2)} pts ≈ ${sig.toFixed(0)}σ</span></div>
+    <div class="row"><span>same-interval agreement</span><span>${d.con_hit.toFixed(2)}%</span></div>
+    <div class="row"><span>predictive samples</span><span>${d.pre_n.toLocaleString()}</span></div>`;
+
+  const {g,w,h}=setupCanvas('equity');
+  const E=d.equity, n=E.length;
+  const lo=Math.min(Math.min(...E), Math.min(...d.net_equity)),
+        hi=Math.max(Math.max(...E), Math.max(...d.net_equity)), pad=(hi-lo)*0.08||1;
+  const X=i=>8+(w-16)*i/(n-1), Y=v=>h-24-(h-44)*(v-(lo-pad))/((hi+pad)-(lo-pad));
+  g.strokeStyle=LINE; g.beginPath(); g.moveTo(8,Y(0)); g.lineTo(w-8,Y(0)); g.stroke();
+  g.fillStyle=FAINT; g.font='10px IBM Plex Mono';
+  g.fillText('$0.00',10,Y(0)-5); g.fillText('$'+fmt(hi),10,Y(hi)+10);
+  document.getElementById('pnlval').textContent=
+    'gross '+(d.pnl>=0?'+$':'−$')+fmt(Math.abs(d.pnl))+' · net '+(d.net>=0?'+$':'−$')+fmt(Math.abs(d.net));
+
+  let i=1; const spf = reduced ? n : Math.max(2, Math.ceil(n/240));
+  (function frame(){
+    if(my!==gen) return;
+    g.strokeStyle=AMBER; g.lineWidth=1.6;
+    g.shadowColor='rgba(255,180,84,.5)'; g.shadowBlur=6;
+    g.beginPath(); g.moveTo(X(i-1),Y(E[i-1]));
+    for(let s2=0;s2<spf&&i<n;s2++,i++) g.lineTo(X(i),Y(E[i]));
+    g.stroke(); g.shadowBlur=0;
+    if(i<n){
+      g.fillStyle=AMBER; g.beginPath(); g.arc(X(i),Y(E[i]),2.5,0,7); g.fill();
+      requestAnimationFrame(frame);
+    } else {
+      const grad=g.createLinearGradient(0,0,0,h);
+      grad.addColorStop(0,'rgba(255,180,84,.14)'); grad.addColorStop(1,'rgba(255,180,84,0)');
+      g.fillStyle=grad; g.beginPath(); g.moveTo(X(0),Y(E[0]));
+      for(let k=1;k<n;k++) g.lineTo(X(k),Y(E[k]));
+      g.lineTo(X(n-1),Y(lo-pad)); g.lineTo(X(0),Y(lo-pad)); g.closePath(); g.fill();
+      // net-of-costs line (same scale) -- the honest one
+      const N=d.net_equity;
+      g.strokeStyle='rgba(241,99,122,.8)'; g.lineWidth=1.2; g.setLineDash([4,3]);
+      g.beginPath(); g.moveTo(X(0),Y(N[0]));
+      for(let k=1;k<n;k++) g.lineTo(X(k),Y(N[k]));
+      g.stroke(); g.setLineDash([]);
+      g.fillStyle='rgba(241,99,122,.9)'; g.font='10px IBM Plex Mono';
+      g.fillText('net of spread', w-92, Y(N[n-1])-6);
+      secondary();
+    }
+  })();
+
+  function secondary(){
+    {
+      const {g,w,h}=setupCanvas('dd');
+      let pk=-1e18; const D=E.map(v=>{if(v>pk)pk=v; return v-pk;});
+      const dlo=Math.min(...D)||-1;
+      const Xd=i=>8+(w-16)*i/(n-1), Yd=v=>8+(h-16)*(v/dlo);
+      g.fillStyle='rgba(241,99,122,.22)'; g.strokeStyle=DOWN;
+      g.beginPath(); g.moveTo(Xd(0),Yd(0));
+      for(let k=1;k<n;k++) g.lineTo(Xd(k),Yd(D[k]));
+      g.lineTo(Xd(n-1),Yd(0)); g.closePath(); g.fill(); g.stroke();
+      document.getElementById('ddval').textContent='max −$'+fmt(d.dd);
+    }
+    {
+      const {g,w,h}=setupCanvas('scatter');
+      const M=d.mid, O=d.ofi, pts=[];
+      for(let k=0;k+1<M.length;k++){const dy=M[k+1]-M[k]; if(O[k]!==0&&dy!==0)pts.push([O[k],dy]);}
+      const ax=Math.max(...pts.map(p=>Math.abs(p[0])))||1, ay=Math.max(...pts.map(p=>Math.abs(p[1])))||1;
+      const Xs=v=>w/2+(w/2-14)*(v/ax), Ys=v=>h/2-(h/2-10)*(v/ay);
+      g.strokeStyle=LINE; g.beginPath();
+      g.moveTo(8,h/2); g.lineTo(w-8,h/2); g.moveTo(w/2,6); g.lineTo(w/2,h-6); g.stroke();
+      for(const [x,y] of pts){
+        g.fillStyle=(x>0)===(y>0)?'rgba(62,207,142,.42)':'rgba(241,99,122,.42)';
+        g.beginPath(); g.arc(Xs(x),Ys(y),1.6,0,7); g.fill();
+      }
+      g.fillStyle=FAINT; g.font='10px IBM Plex Mono';
+      g.fillText('OFI →',w-46,h/2-6); g.fillText('Δmid ↑',w/2+6,14);
+      document.getElementById('corrval').textContent='r = '+d.pre_corr.toFixed(3);
+    }
+  }
+
+  document.getElementById('stats').innerHTML=[
+    ['gross P&L / share',(d.pnl>=0?'+$':'−$')+fmt(Math.abs(d.pnl)), d.pnl>=0?'up':'down'],
+    ['net after spread',(d.net>=0?'+$':'−$')+fmt(Math.abs(d.net)), d.net>=0?'up':'down'],
+    ['spread cost paid','−$'+fmt(d.cost)+' ('+d.trades.toLocaleString()+' sh)','down'],
+    ['win rate',fmt(d.wr,1)+'%', d.wr>=50?'up':'down'],
+    ['max drawdown (net)','−$'+fmt(d.net_dd),'down'],
+    ['profit factor',fmt(d.pf), d.pf>=1?'up':'down'],
+    ['t-stat',fmt(d.t,1),'am'],
+    ['exposure',fmt(d.exposure,1)+'%',''],
+    ['avg win / loss','$'+fmt(d.avg_win,4)+' / $'+fmt(d.avg_loss,4),''],
+    ['position flips',d.flips.toLocaleString(),''],
+  ].map(([k,v,c])=>`<div class="stat"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`).join('');
+}
+
+function renderPortfolio(){
+  const T=R.table;
+  {
+    const {g,w,h}=setupCanvas('hist');
+    const BINS=30, LO=35, HI=65, bw=(HI-LO)/BINS, counts=new Array(BINS).fill(0);
+    let above=0;
+    for(const r of T){ if(r.hit>50)above++;
+      const b=Math.min(BINS-1,Math.max(0,Math.floor((r.hit-LO)/bw))); counts[b]++; }
+    const mx=Math.max(...counts)||1;
+    const Xb=b=>10+(w-20)*b/BINS, BW=(w-20)/BINS-2;
+    for(let b=0;b<BINS;b++){
+      const c=LO+bw*(b+0.5);
+      g.fillStyle = c>50 ? 'rgba(255,180,84,.75)' : 'rgba(95,107,122,.45)';
+      const bh=(h-34)*counts[b]/mx;
+      g.fillRect(Xb(b), h-22-bh, BW, bh);
+    }
+    const x50=10+(w-20)*((50-LO)/(HI-LO));
+    g.strokeStyle=FAINT; g.setLineDash([3,3]); g.beginPath();
+    g.moveTo(x50,8); g.lineTo(x50,h-22); g.stroke(); g.setLineDash([]);
+    g.fillStyle=FAINT; g.font='10px IBM Plex Mono';
+    g.fillText('35%',8,h-8); g.fillText('50% = chance',x50+4,16); g.fillText('65%',w-32,h-8);
+    document.getElementById('histval').textContent =
+      (100*above/T.length).toFixed(0)+'% of symbols beat chance';
+  }
+  {
+    let n=0,hit=0,pnl=0,net=0,above=0,netpos=0;
+    const hits=T.map(r=>r.hit).sort((a,b)=>a-b);
+    for(const r of T){ n+=r.n; hit+=r.hit*r.n/100; pnl+=r.pnl; net+=r.net; if(r.hit>50)above++; if(r.net>0)netpos++; }
+    const pooled=100*hit/n, se=50/Math.sqrt(n);
+    document.getElementById('portstats').innerHTML=[
+      ['symbols tested',T.length.toLocaleString(),'am'],
+      ['pooled hit-rate',pooled.toFixed(2)+'% ≈ '+((pooled-50)/se).toFixed(0)+'σ','am'],
+      ['median symbol hit-rate',hits[Math.floor(hits.length/2)].toFixed(2)+'%',''],
+      ['symbols beating chance',above.toLocaleString()+' / '+T.length,'up'],
+      ['Σ gross P&L (1 sh/symbol)',(pnl>=0?'+$':'−$')+fmt(Math.abs(pnl)), pnl>=0?'up':'down'],
+      ['Σ net after spread',(net>=0?'+$':'−$')+fmt(Math.abs(net)), net>=0?'up':'down'],
+      ['median net (per symbol)',(()=>{const v=T.map(r=>r.netb).sort((a,b)=>a-b);const m=v[Math.floor(v.length/2)];return (m>=0?'+':'−')+fmt(Math.abs(m),1)+' bps';})(), (()=>{const v=T.map(r=>r.netb).sort((a,b)=>a-b);return v[Math.floor(v.length/2)]>=0;})()?'up':'down'],
+      ['profitable net of costs',netpos.toLocaleString()+' / '+T.length, netpos>T.length/2?'up':'down'],
+      ['pooled samples',n.toLocaleString(),''],
+    ].map(([k,v,c])=>`<div class="stat"><div class="k">${k}</div><div class="v ${c}" style="font-size:17px">${v}</div></div>`).join('');
+  }
+}
+
+const COLS=[['sym','symbol'],['px','price $'],['n','samples'],['hit','hit %'],['corr','corr'],
+            ['pnlb','gross bps'],['netb','net bps'],['pnl','gross $'],['net','net $'],
+            ['wr','win %'],['pf','PF'],['t','t-stat'],['flips','flips']];
+let sortKey='net', sortDir=-1;
+function renderTable(){
+  document.getElementById('lbhead').innerHTML = COLS.map(([k,lbl])=>
+    `<th data-k="${k}" class="${k===sortKey?'on':''}">${lbl}${k===sortKey?(sortDir<0?' ↓':' ↑'):''}</th>`).join('');
+  const q=(document.getElementById('q').value||'').toUpperCase();
+  const minpx=+document.getElementById('minpx').value||0;
+  const minn=+document.getElementById('minn').value||0;
+  const filtered=R.table.filter(r=>(!q||r.sym.includes(q))&&r.px>=minpx&&r.n>=minn);
+  document.getElementById('lbcount').textContent=filtered.length+' / '+R.table.length+' symbols';
+  const rows=filtered.sort((a,b)=>{
+    const va=a[sortKey], vb=b[sortKey];
+    if(typeof va==='string') return va.localeCompare(vb)*sortDir;
+    return (va-vb)*sortDir;         // sortDir=-1 -> descending, +1 -> ascending
+  });
+  document.getElementById('lbbody').innerHTML = rows.map(r=>
+    `<tr class="${r.det?'det':''}" data-sym="${r.sym}">
+      <td>${r.sym}${r.det?' ▸':''}</td><td>${r.px.toFixed(2)}</td><td>${r.n.toLocaleString()}</td>
+      <td class="${r.hit>50?'pos':'neg'}">${r.hit.toFixed(2)}</td><td>${r.corr.toFixed(3)}</td>
+      <td class="${r.pnlb>=0?'pos':'neg'}">${r.pnlb.toFixed(1)}</td>
+      <td class="${r.netb>=0?'pos':'neg'}">${r.netb.toFixed(1)}</td>
+      <td class="${r.pnl>=0?'pos':'neg'}">${r.pnl.toFixed(2)}</td>
+      <td class="${r.net>=0?'pos':'neg'}">${r.net.toFixed(2)}</td>
+      <td>${r.wr.toFixed(1)}</td><td>${r.pf.toFixed(2)}</td><td>${r.t.toFixed(1)}</td><td>${r.flips.toLocaleString()}</td>
+    </tr>`).join('');
+  document.querySelectorAll('#lbhead th').forEach(th=>th.onclick=()=>{
+    const k=th.dataset.k;
+    if(k===sortKey) sortDir=-sortDir; else {sortKey=k; sortDir=-1;}
+    renderTable();
+  });
+  document.querySelectorAll('#lbbody tr.det').forEach(tr=>tr.onclick=()=>{
+    document.getElementById('symsel').value=tr.dataset.sym;
+    renderDetail(tr.dataset.sym);
+    scrollTo({top:0,behavior:'smooth'});
+  });
+}
+
+fetch('results.json').then(r=>r.json()).then(data=>{
+  R=data;
+  const syms=Object.keys(R.detail);
+  const sel=document.getElementById('symsel');
+  sel.innerHTML=syms.map(s2=>`<option>${s2}</option>`).join('');
+  sel.onchange=()=>renderDetail(sel.value);
+  document.getElementById('prov').innerHTML=
+    `<span><b>engine</b> PitchFork · NASDAQ ITCH 5.0 order-book engine (C++)</span>
+     <span><b>replay</b> ${R.messages.toLocaleString()} messages · ${R.file.split('/').pop()}</span>
+     <span><b>book fingerprint</b> ${R.fingerprint} (deterministic)</span>
+     <span><b>fills</b> mid-to-mid, no costs — signal study</span>`;
+  renderDetail(syms[0]);
+  renderPortfolio();
+  renderTable();
+  ['q','minpx','minn'].forEach(id=>document.getElementById(id).oninput=renderTable);
+}).catch(e=>{
+  document.getElementById('runline').textContent=
+    'results.json not found — run: ./build/orderbook <file> --study all --detail AAPL,TSLA --interval 50 --out report/results.json';
+});
+</script>
+</body>
+</html>
