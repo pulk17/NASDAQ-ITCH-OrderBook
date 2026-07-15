@@ -18,6 +18,36 @@ static uint32_t study_interval = 50;
 static uint8_t carry[128];
 static size_t  carry_len = 0;
 static uint64_t msg_count = 0;
+static uint64_t last_ts = 0;   // ns since midnight, from the last processed message
+static inline uint64_t ts48(const uint8_t* body){
+    uint64_t t = 0; for(int i = 5; i < 11; i++) t = (t << 8) | body[i]; return t;
+}
+
+// Trade tape ring + session clock (fed from every processed message).
+static double last_ts_ns = 0;
+struct Trade { uint32_t locate, price, shares, aggr_buy, ts_ms; };
+static Trade tape[256];
+static uint64_t tape_n = 0;
+
+static inline void observe(const char* buffer){
+    uint64_t ts = 0;
+    for(int i = 0; i < 6; i++) ts = (ts << 8) | (uint8_t)buffer[5+i];
+    last_ts_ns = (double)ts;
+    char t = buffer[0];
+    if(t == 'E' || t == 'C'){
+        uint64_t ref = __builtin_bswap64(*reinterpret_cast<const uint64_t*>(buffer + 11));
+        uint32_t sh  = __builtin_bswap32(*reinterpret_cast<const uint32_t*>(buffer + 19));
+        auto it = E->orders.find(ref);
+        if(it != E->orders.end()){
+            const OrderInfo& o = it->second;
+            Trade& tr = tape[tape_n % 256];
+            tr.locate = o.locate; tr.price = o.price; tr.shares = sh;
+            tr.aggr_buy = (o.side == 'S');            // resting sell hit => aggressive buyer
+            tr.ts_ms = (uint32_t)(ts / 1000000ULL);
+            tape_n++;
+        }
+    }
+}
 
 extern "C" {
 
@@ -52,6 +82,7 @@ EMSCRIPTEN_KEEPALIVE void engine_feed(const uint8_t* chunk, int len_i){
                 size_t take = std::min(need - carry_len, (size_t)(e - p));
                 memcpy(carry + carry_len, p, take); carry_len += take; p += take;
                 if(carry_len == need){
+                    observe(reinterpret_cast<const char*>(carry + 2));
                     uint16_t loc = E->process_message(reinterpret_cast<const char*>(carry + 2));
                     if(loc) S->on_book_update(loc, E->books[loc]);
                     msg_count++; carry_len = 0;
@@ -63,6 +94,8 @@ EMSCRIPTEN_KEEPALIVE void engine_feed(const uint8_t* chunk, int len_i){
         uint16_t length = __builtin_bswap16(*reinterpret_cast<const uint16_t*>(p));
         if(length == 0){ p = e; break; }
         if(p + 2 + (size_t)length > e) break;
+        observe(reinterpret_cast<const char*>(p + 2));
+        last_ts = ts48(p + 2);
         uint16_t loc = E->process_message(reinterpret_cast<const char*>(p + 2));
         if(loc) S->on_book_update(loc, E->books[loc]);
         msg_count++;
@@ -72,6 +105,7 @@ EMSCRIPTEN_KEEPALIVE void engine_feed(const uint8_t* chunk, int len_i){
 }
 
 EMSCRIPTEN_KEEPALIVE double engine_msg_count(){ return (double)msg_count; }
+EMSCRIPTEN_KEEPALIVE double engine_last_ts(){ return (double)last_ts; }
 EMSCRIPTEN_KEEPALIVE int engine_symbol_count(){ return (int)E->symbol_to_locate.size(); }
 
 EMSCRIPTEN_KEEPALIVE int engine_locate(const char* sym){
@@ -124,6 +158,13 @@ EMSCRIPTEN_KEEPALIVE double strategy_stat(int locate, int field){
     return 0;
 }
 
+EMSCRIPTEN_KEEPALIVE double trade_count(){ return (double)tape_n; }
+// Absolute index i (from trade_count history, last 256 valid); writes 5 u32s.
+EMSCRIPTEN_KEEPALIVE void trade_get(double i, uint32_t* out){
+    const Trade& t = tape[(uint64_t)i % 256];
+    out[0]=t.locate; out[1]=t.price; out[2]=t.shares; out[3]=t.aggr_buy; out[4]=t.ts_ms;
+}
+
 // Decimal fingerprint written into buf -- byte-identical book state proof
 // against the native binary on the same input.
 EMSCRIPTEN_KEEPALIVE void engine_fingerprint(char* buf){
@@ -139,4 +180,4 @@ EMSCRIPTEN_KEEPALIVE void engine_fingerprint(char* buf){
     snprintf(buf, 32, "%llu", (unsigned long long)fp);
 }
 
-} 
+} // extern "C"

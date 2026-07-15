@@ -10,193 +10,257 @@
       --faint:#39424F;--amber:#FFB454;--up:#3ECF8E;--down:#F1637A}
 *{box-sizing:border-box;margin:0;padding:0}
 html{background:var(--ink)}
-body{font-family:'IBM Plex Mono',monospace;color:var(--text);max-width:980px;
-     margin:0 auto;padding:40px 28px;font-size:14px}
+body{font-family:'IBM Plex Mono',monospace;color:var(--text);max-width:1240px;
+     margin:0 auto;padding:32px 26px 48px;font-size:13.5px}
+a{color:var(--amber);text-decoration:none}
 header{display:flex;justify-content:space-between;align-items:baseline;
-       border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:24px}
+       border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:18px}
 .brand{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:19px}
 .brand em{font-style:normal;color:var(--amber)}
 .sub{color:var(--dim);font-size:11.5px}
-.controls{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center}
+#err{display:none;background:#2A1215;border:1px solid var(--down);color:var(--down);
+     border-radius:6px;padding:12px 16px;margin-bottom:14px;font-size:12.5px}
+.controls{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
 select,button{background:var(--panel);color:var(--amber);border:1px solid var(--line);
-  border-radius:4px;font:inherit;font-size:13px;padding:6px 12px;cursor:pointer}
+  border-radius:4px;font:inherit;font-size:12.5px;padding:6px 11px;cursor:pointer}
 button:hover{border-color:var(--amber)}
-.hud{margin-left:auto;color:var(--dim);font-size:12px}
+.hud{margin-left:auto;color:var(--dim);font-size:12px;display:flex;gap:18px}
 .hud b{color:var(--text);font-weight:500}
-.book{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
-      border:1px solid var(--line);border-radius:6px;overflow:hidden}
-.side{background:var(--panel);padding:14px 0}
-.side h3{font-size:10.5px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase;
-         padding:0 18px 10px}
-.lvl{display:grid;grid-template-columns:1fr 1fr;padding:4px 18px;position:relative;font-size:13.5px}
-.lvl .bar{position:absolute;top:2px;bottom:2px;opacity:.14;border-radius:2px}
-.bids .bar{right:0;background:var(--up)} .asks .bar{left:0;background:var(--down)}
-.bids .px{color:var(--up)} .asks .px{color:var(--down)}
-.sz{text-align:right;color:var(--text)}
-.mid{grid-column:1/3;background:var(--panel);text-align:center;padding:12px;
-     font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:26px;color:var(--amber);
-     border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-.mid small{color:var(--dim);font-size:11px;font-weight:400;font-family:'IBM Plex Mono',monospace}
-footer{color:var(--faint);font-size:11px;margin-top:22px;line-height:1.7}
-footer b{color:var(--dim)}
-.flash{animation:fl .25s}
-@keyframes fl{from{background:rgba(255,180,84,.15)}}
-.panel2{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 16px;margin-top:18px}
+.hud .clk{color:var(--amber)}
+.grid{display:grid;grid-template-columns:340px 1fr;gap:14px;margin-bottom:14px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px 14px}
 .pt{display:flex;justify-content:space-between;color:var(--dim);font-size:10.5px;
     text-transform:uppercase;letter-spacing:.13em;margin-bottom:10px}
 .pt b{color:var(--amber)}
-.btstats{display:flex;gap:26px;margin-top:8px;font-size:12.5px;color:var(--dim);flex-wrap:wrap}
+canvas{display:block;width:100%}
+/* ladder */
+.lvl{display:grid;grid-template-columns:1fr 1fr;padding:3px 6px;position:relative;font-size:12.5px}
+.lvl .bar{position:absolute;top:2px;bottom:2px;opacity:.15;border-radius:2px}
+.bids .bar{right:0;background:var(--up)} .asks .bar{left:0;background:var(--down)}
+.bids .px{color:var(--up)} .asks .px{color:var(--down)}
+.sz{text-align:right;color:var(--text)}
+.mid{text-align:center;padding:8px 0;font-family:'Space Grotesk',sans-serif;font-weight:700;
+     font-size:22px;color:var(--amber);border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin:6px 0}
+.mid small{color:var(--dim);font-size:10.5px;font-weight:400;font-family:'IBM Plex Mono',monospace}
+.btstats{display:flex;gap:24px;margin-top:8px;font-size:12px;color:var(--dim);flex-wrap:wrap}
 .btstats b{color:var(--text);font-weight:500}
 .btstats b.pos{color:var(--up)} .btstats b.neg{color:var(--down)}
 #wl{width:100%;border-collapse:collapse;font-size:12px}
 #wl th{color:var(--dim);font-weight:500;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
       text-align:right;padding:6px 10px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
+#wl th:first-child{text-align:left}
 #wl td{padding:4px 10px;text-align:right;border-bottom:1px solid rgba(27,35,47,.4);color:var(--dim)}
 #wl td:first-child{text-align:left;color:var(--text);cursor:pointer}
 #wl tr:hover td{background:rgba(255,180,84,.04)}
 #wl .pos{color:var(--up)} #wl .neg{color:var(--down)}
+footer{color:var(--faint);font-size:11px;margin-top:20px;line-height:1.7}
+footer b{color:var(--dim)}
 </style>
 </head>
 <body>
 <header>
   <div class="brand">PITCHFORK<em>·</em>LIVE REPLAY</div>
-  <div class="sub"><a href="index.html" style="color:var(--amber);text-decoration:none">← backtest report</a> · the C++ engine, compiled to WebAssembly, running in this tab</div>
+  <div class="sub"><a href="index.html">← backtest report</a> · the C++ engine, compiled to WebAssembly, running in this tab</div>
 </header>
-<div id="err" style="display:none;background:#2A1215;border:1px solid var(--down);color:var(--down);
-     border-radius:6px;padding:12px 16px;margin-bottom:16px;font-size:12.5px"></div>
+<div id="err"></div>
 
 <div class="controls">
   <select id="sym"></select>
   <select id="ivl">
-    <option value="25">ivl 25</option>
-    <option value="50" selected>ivl 50</option>
-    <option value="100">ivl 100</option>
-    <option value="200">ivl 200</option>
+    <option value="25">ivl 25</option><option value="50" selected>ivl 50</option>
+    <option value="100">ivl 100</option><option value="200">ivl 200</option>
   </select>
   <select id="speed">
-    <option value="2000">2k msg/s</option>
-    <option value="20000" selected>20k msg/s</option>
-    <option value="200000">200k msg/s</option>
-    <option value="0">max</option>
+    <option value="1">1× market</option><option value="60" selected>60×</option>
+    <option value="600">600×</option><option value="0">max</option>
   </select>
   <button id="playpause">pause</button>
   <button id="restart">restart</button>
-  <div class="hud"><b id="mcount">0</b> messages · <b id="rate">0</b>/s · OFI <b id="ofi">0</b></div>
+  <div class="hud"><span class="clk" id="clk">--:--:--</span>
+    <span><b id="mcount">0</b> msgs</span><span><b id="rate">0</b>/s</span><span>OFI <b id="ofi">0</b></span></div>
 </div>
 
-<div class="book">
-  <div class="side asks"><h3>asks</h3><div id="asks"></div></div>
-  <div class="side bids"><h3>bids</h3><div id="bids"></div></div>
-  <div class="mid"><span id="mid">—</span> <small id="spread"></small></div>
+<div class="grid">
+  <div class="panel">
+    <div class="pt"><span>book · top 10</span><span id="sprd"></span></div>
+    <div class="asks" id="asks"></div>
+    <div class="mid"><span id="mid">—</span></div>
+    <div class="bids" id="bids"></div>
+  </div>
+  <div>
+    <div class="panel" style="margin-bottom:14px">
+      <div class="pt"><span>depth · cumulative liquidity</span><span id="dinfo"></span></div>
+      <canvas id="depth" height="180"></canvas>
+    </div>
+    <div class="panel">
+      <div class="pt"><span>mid · 10s candles (market time)</span><span id="cinfo"></span></div>
+      <canvas id="candles" height="170"></canvas>
+    </div>
+  </div>
 </div>
 
-<div class="panel2">
-  <div class="pt"><span>live backtest · sign(OFI) 1sh, net of spread · interval <b id="ivln">50</b></span>
-    <span id="bt-head"></span></div>
-  <canvas id="eqlive" height="120"></canvas>
+<div class="panel" style="margin-bottom:14px">
+  <div class="pt"><span>live backtest · sign(OFI) 1sh, net of spread · interval <b id="ivln">50</b></span></div>
+  <canvas id="eqlive" height="110"></canvas>
   <div class="btstats" id="btstats"></div>
 </div>
 
-<div class="panel2">
+<div class="panel">
   <div class="pt"><span>watchlist · every symbol in the tape, live</span><span id="wlcount"></span></div>
-  <div style="overflow:auto;max-height:300px">
+  <div style="overflow:auto;max-height:280px">
   <table id="wl"><thead><tr>
-    <th style="text-align:left">sym</th><th>mid</th><th>OFI</th><th>hit %</th><th>n</th><th>net bps</th><th>net $</th>
+    <th>sym</th><th>mid</th><th>OFI</th><th>hit %</th><th>n</th><th>net bps</th><th>net $</th>
   </tr></thead><tbody id="wlbody"></tbody></table>
   </div>
 </div>
 
 <footer>
   <b>what this is</b> — a deterministic replay of historical NASDAQ ITCH 5.0 order-flow through the
-  PitchFork order-book engine (C++ compiled to WebAssembly), with an OFI signal backtest running live
-  against the rebuilt book: long/short 1 share on sign(OFI), fills at mid, net line charged the quoted
-  half-spread on every position change. Not a live feed; not a simulation — real recorded exchange
-  messages, replayed and traded in your browser.
+  PitchFork order-book engine (C++ compiled to WebAssembly), paced by the embedded exchange timestamps,
+  with an OFI signal backtest running live against the rebuilt book: long/short 1 share on sign(OFI),
+  fills at mid, net line charged the quoted half-spread on every position change. Not a live feed;
+  not a simulation — real recorded exchange messages, replayed and traded in your browser.
 </footer>
 
 <script src="engine.js"></script>
 <script>
-const LEVELS = 10;
-let M, data, pos = 0, playing = true, speed = 20000, symLocates = {}, curLoc = 0;
-let fed = 0, lastRateT = performance.now(), lastRateC = 0;
-
+const LADDER = 10, DEPTH = 40;
+let M, data, pos = 0, playing = true, speed = 60, symLocates = {}, curLoc = 0;
+let lastRateT = performance.now(), lastRateC = 0;
+let wallStart = 0, tsStart = 0;           // pacing anchors
+let candles = [], eqHist = [], wlTick = 0;
 const $ = id => document.getElementById(id);
 
-function fail(msg){
-  const e = document.getElementById('err');
-  e.style.display = 'block'; e.textContent = msg;
-}
+function fail(m){ const e = $('err'); e.style.display = 'block'; e.textContent = m; }
 if(location.protocol === 'file:')
-  fail('This page must be served over HTTP (fetch is blocked on file://). Run: cd report && python3 -m http.server 8000, then open http://localhost:8000/live.html');
+  fail('Serve over HTTP: cd report && python3 -m http.server 8000 → http://localhost:8000/live.html');
+
 PitchFork().then(mod => {
   M = mod;
-  if(!M._engine_symbol_at || !M._strategy_stat)
-    return fail('engine.js is stale (missing new exports). Re-run ./wasm/build.sh, then hard-refresh (Ctrl+Shift+R).');
-  fetch('slice.bin').then(r => {
-    if(!r.ok) throw new Error(r.status);
-    return r.arrayBuffer();
-  }).then(ab => {
-    data = new Uint8Array(ab);
-    start();
-  }).catch(e => fail('slice.bin not found — generate it: python3 tools/slice_itch.py <file.itch> report/slice.bin AAPL,TSLA,NVDA,MSFT,AMZN 8'));
-}).catch(e => fail('WASM failed to load: ' + e + ' — re-run ./wasm/build.sh and hard-refresh.'));
+  if(!M._engine_symbol_at || !M._strategy_stat || !M._engine_last_ts)
+    return fail('engine.js is stale (missing exports). Re-run ./wasm/build.sh, then hard-refresh (Ctrl+Shift+R).');
+  fetch('slice.bin').then(r => { if(!r.ok) throw 0; return r.arrayBuffer(); }).then(ab => {
+    data = new Uint8Array(ab); start();
+  }).catch(() => fail('slice.bin missing — python3 tools/slice_itch.py <file.itch> report/slice.bin AAPL,TSLA,NVDA,MSFT,AMZN 8'));
+}).catch(e => fail('WASM failed to load: ' + e));
 
 function start(){
-  M._engine_create(); pos = 0; fed = 0;
-  // feed a small prefix so the 'R' directory records land, then resolve symbols
-  step(50000);
-  // enumerate EVERY symbol present in the tape
+  M._engine_create(); pos = 0; candles = []; eqHist = [];
+  step(60000);                                    // prefix: directory records
   symLocates = {};
   const nb = M._malloc(16);
-  for(let i = 0; ; i++){
-    const l = M._engine_symbol_at(i, nb);
-    if(!l) break;
-    symLocates[M.UTF8ToString(nb)] = l;
-  }
+  for(let i = 0; ; i++){ const l = M._engine_symbol_at(i, nb); if(!l) break;
+    symLocates[M.UTF8ToString(nb)] = l; }
   const syms = Object.keys(symLocates);
   $('sym').innerHTML = syms.map(s=>`<option>${s}</option>`).join('');
   curLoc = symLocates[syms[0]];
+  wallStart = performance.now(); tsStart = M._engine_last_ts();
   requestAnimationFrame(tick);
 }
 
-const CHUNK_BUF = { ptr: 0, cap: 0 };
-function step(nBytes){
+const CB = { ptr: 0, cap: 0 };
+function step(n){
   if(pos >= data.length) return;
-  const n = Math.min(nBytes, data.length - pos);
-  if(CHUNK_BUF.cap < n){ if(CHUNK_BUF.ptr) M._free(CHUNK_BUF.ptr); CHUNK_BUF.ptr = M._malloc(n); CHUNK_BUF.cap = n; }
-  M.HEAPU8.set(data.subarray(pos, pos + n), CHUNK_BUF.ptr);
-  M._engine_feed(CHUNK_BUF.ptr, n);
+  n = Math.min(n, data.length - pos);
+  if(CB.cap < n){ if(CB.ptr) M._free(CB.ptr); CB.ptr = M._malloc(n); CB.cap = n; }
+  M.HEAPU8.set(data.subarray(pos, pos + n), CB.ptr);
+  M._engine_feed(CB.ptr, n);
   pos += n;
 }
 
 function tick(){
   if(playing && pos < data.length){
-    // msgs are ~30-40B; convert msg/s target to bytes/frame at ~60fps
-    const bytes = speed === 0 ? data.length : Math.max(64, Math.round(speed * 35 / 60));
-    step(bytes);
+    if(speed === 0) step(1 << 18);
+    else {
+      // pace by exchange timestamps: feed until market clock catches target
+      const target = tsStart + (performance.now() - wallStart) * 1e6 * speed;
+      let guard = 0;
+      while(M._engine_last_ts() < target && pos < data.length && guard++ < 300) step(4096);
+    }
   }
-  if(pos >= data.length){ pos = 0; M._engine_create(); step(50000); }  // loop the tape
+  if(pos >= data.length){                          // loop the tape
+    M._engine_create(); pos = 0; candles = []; eqHist = []; step(60000);
+    wallStart = performance.now(); tsStart = M._engine_last_ts();
+  }
   render();
   requestAnimationFrame(tick);
 }
 
-const lvlBuf = () => { if(!lvlBuf.p) lvlBuf.p = M._malloc(8 * LEVELS); return lvlBuf.p; };
-function readSide(side){
-  const p = lvlBuf();
-  const n = M._engine_levels(curLoc, side, p, LEVELS);
-  const u = new Uint32Array(M.HEAPU32.buffer, p, 2 * LEVELS);
-  const out = [];
-  for(let i = 0; i < n; i++) out.push([u[2*i] / 10000, u[2*i+1]]);
+const lvlP = () => { if(!lvlP.p) lvlP.p = M._malloc(8 * DEPTH); return lvlP.p; };
+function side(s, n){
+  const p = lvlP(), k = M._engine_levels(curLoc, s, p, n);
+  const u = new Uint32Array(M.HEAPU32.buffer, p, 2 * n), out = [];
+  for(let i = 0; i < k; i++) out.push([u[2*i] / 10000, u[2*i+1]]);
   return out;
 }
 
-let eqHist = [], wlTick = 0;
-function drawEquity(){
-  const c = $('eqlive'), dpr = devicePixelRatio||1, w = c.clientWidth, h = 120;
+function drawDepth(bids, asks){
+  const c = $('depth'), dpr = devicePixelRatio || 1, w = c.clientWidth, h = 180;
   c.width = w*dpr; c.height = h*dpr; c.style.height = h+'px';
   const g = c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
-  const gross = M._strategy_stat(curLoc, 2), net = M._strategy_stat(curLoc, 3);
-  eqHist.push([gross, net]);
+  if(!bids.length || !asks.length) return;
+  const mid = (bids[0][0] + asks[0][0]) / 2;
+  let cb = 0, ca = 0;
+  const B = bids.map(l => [l[0], cb += l[1]]);
+  const A = asks.map(l => [l[0], ca += l[1]]);
+  const lo = B[B.length-1][0], hi = A[A.length-1][0];
+  const maxc = Math.max(cb, ca) || 1;
+  const X = p => 6 + (w-12) * (p - lo) / (hi - lo || 1);
+  const Y = v => h-18 - (h-30) * v / maxc;
+  const area = (pts, color, edge) => {
+    // step-function fill: liquidity is flat between levels
+    g.beginPath(); g.moveTo(X(pts[0][0]), h-18);
+    let prev = 0;
+    for(const [p, v] of pts){ g.lineTo(X(p), Y(prev)); g.lineTo(X(p), Y(v)); prev = v; }
+    g.lineTo(X(pts[pts.length-1][0]), h-18); g.closePath();
+    g.fillStyle = color; g.fill(); g.strokeStyle = edge; g.lineWidth = 1.2; g.stroke();
+  };
+  area(B, 'rgba(62,207,142,.16)', 'rgba(62,207,142,.8)');
+  area(A, 'rgba(241,99,122,.16)', 'rgba(241,99,122,.8)');
+  g.strokeStyle = '#39424F'; g.setLineDash([3,3]);
+  g.beginPath(); g.moveTo(X(mid), 8); g.lineTo(X(mid), h-18); g.stroke(); g.setLineDash([]);
+  g.fillStyle = '#5F6B7A'; g.font = '10px IBM Plex Mono';
+  g.fillText(lo.toFixed(2), 6, h-5); g.fillText(hi.toFixed(2), w-46, h-5);
+  $('dinfo').textContent = 'bid ' + cb.toLocaleString() + ' / ask ' + ca.toLocaleString() + ' sh';
+}
+
+const BUCKET = 10e9;                               // 10s of market time per candle
+function updateCandles(mid){
+  const ts = M._engine_last_ts();
+  if(!mid || !ts) return;
+  const b = Math.floor(ts / BUCKET);
+  const cur = candles[candles.length-1];
+  if(!cur || cur.b !== b){ candles.push({b, o: mid, h: mid, l: mid, c: mid}); if(candles.length > 70) candles.shift(); }
+  else { cur.h = Math.max(cur.h, mid); cur.l = Math.min(cur.l, mid); cur.c = mid; }
+}
+function drawCandles(){
+  const c = $('candles'), dpr = devicePixelRatio || 1, w = c.clientWidth, h = 170;
+  c.width = w*dpr; c.height = h*dpr; c.style.height = h+'px';
+  const g = c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
+  if(candles.length < 2) return;
+  const lo = Math.min(...candles.map(k=>k.l)), hi = Math.max(...candles.map(k=>k.h));
+  const pad = (hi-lo)*0.1 || 0.01;
+  const Y = v => 8 + (h-30) * (1 - (v-(lo-pad))/((hi+pad)-(lo-pad)));
+  const bw = Math.min(14, (w-16)/candles.length - 3);
+  candles.forEach((k, i) => {
+    const x = 8 + (w-16) * i / candles.length + bw/2;
+    const up = k.c >= k.o;
+    g.strokeStyle = g.fillStyle = up ? '#3ECF8E' : '#F1637A';
+    g.beginPath(); g.moveTo(x, Y(k.h)); g.lineTo(x, Y(k.l)); g.stroke();
+    const y0 = Y(Math.max(k.o, k.c)), y1 = Y(Math.min(k.o, k.c));
+    g.fillRect(x - bw/2, y0, bw, Math.max(1.5, y1 - y0));
+  });
+  g.fillStyle = '#5F6B7A'; g.font = '10px IBM Plex Mono';
+  g.fillText(hi.toFixed(2), w-52, 14); g.fillText(lo.toFixed(2), w-52, h-8);
+  $('cinfo').textContent = candles[candles.length-1].c.toFixed(3);
+}
+
+function drawEquity(){
+  const c = $('eqlive'), dpr = devicePixelRatio || 1, w = c.clientWidth, h = 110;
+  c.width = w*dpr; c.height = h*dpr; c.style.height = h+'px';
+  const g = c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
+  eqHist.push([M._strategy_stat(curLoc,2), M._strategy_stat(curLoc,3)]);
   if(eqHist.length > 900) eqHist.shift();
   if(eqHist.length < 2) return;
   const all = eqHist.flat();
@@ -209,7 +273,32 @@ function drawEquity(){
   g.strokeStyle = 'rgba(241,99,122,.85)'; g.setLineDash([4,3]); g.beginPath();
   eqHist.forEach((p,i)=>i?g.lineTo(X(i),Y(p[1])):g.moveTo(X(i),Y(p[1]))); g.stroke(); g.setLineDash([]);
 }
-function renderBacktest(){
+
+function clock(){
+  const ns = M._engine_last_ts();
+  if(!ns) return '--:--:--';
+  const s = Math.floor(ns / 1e9);
+  return String(Math.floor(s/3600)).padStart(2,'0') + ':' +
+         String(Math.floor(s/60)%60).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+}
+
+function render(){
+  const bids = side(0, DEPTH), asks = side(1, DEPTH);
+  const b10 = bids.slice(0, LADDER), a10 = asks.slice(0, LADDER);
+  const maxSz = Math.max(1, ...b10.map(l=>l[1]), ...a10.map(l=>l[1]));
+  const row = (px, sz) =>
+    `<div class="lvl"><span class="px">${px.toFixed(2)}</span><span class="sz">${sz.toLocaleString()}</span>
+     <span class="bar" style="width:${(100*sz/maxSz).toFixed(1)}%"></span></div>`;
+  $('asks').innerHTML = a10.slice().reverse().map(l=>row(l[0],l[1])).join('');
+  $('bids').innerHTML = b10.map(l=>row(l[0],l[1])).join('');
+  let mid = 0;
+  if(b10.length && a10.length){
+    mid = (b10[0][0] + a10[0][0]) / 2;
+    $('mid').textContent = mid.toFixed(3);
+    $('sprd').textContent = 'spread ' + (a10[0][0]-b10[0][0]).toFixed(2);
+  }
+  drawDepth(bids, asks);
+  updateCandles(mid); drawCandles();
   drawEquity();
   const f = (i,d=2) => M._strategy_stat(curLoc,i).toFixed(d);
   const net = M._strategy_stat(curLoc,3);
@@ -218,59 +307,40 @@ function renderBacktest(){
     `<span>gross <b>$${f(2,3)}</b></span><span>net <b class="${net>=0?'pos':'neg'}">$${f(3,3)}</b></span>`+
     `<span>net <b class="${net>=0?'pos':'neg'}">${f(6,1)} bps</b></span>`+
     `<span>traded <b>${f(4,0)} sh</b></span><span>flips <b>${f(7,0)}</b></span>`;
-}
-function renderWatchlist(){
-  if(++wlTick % 15) return;                       // 4x/sec is plenty
-  const rows = Object.entries(symLocates).map(([sym,l])=>{
-    const hit=M._strategy_stat(l,0), n=M._strategy_stat(l,1), netb=M._strategy_stat(l,6),
-          net=M._strategy_stat(l,3), mid=M._strategy_stat(l,8), ofi=M._engine_ofi(l);
-    return {sym,l,hit,n,netb,net,mid,ofi};
-  }).sort((a,b)=>b.n-a.n);
-  $('wlcount').textContent = rows.length + ' symbols';
-  $('wlbody').innerHTML = rows.map(r=>
-    `<tr data-s="${r.sym}"><td>${r.sym}</td><td>${r.mid.toFixed(2)}</td>`+
-    `<td class="${r.ofi>=0?'pos':'neg'}">${r.ofi.toLocaleString()}</td>`+
-    `<td class="${r.hit>50?'pos':r.n?'neg':''}">${r.n?r.hit.toFixed(1):'—'}</td><td>${r.n}</td>`+
-    `<td class="${r.netb>=0?'pos':'neg'}">${r.netb.toFixed(1)}</td>`+
-    `<td class="${r.net>=0?'pos':'neg'}">${r.net.toFixed(3)}</td></tr>`).join('');
-  document.querySelectorAll('#wlbody tr').forEach(tr=>tr.onclick=()=>{
-    $('sym').value = tr.dataset.s; curLoc = symLocates[tr.dataset.s]; eqHist = [];
-  });
-}
-function render(){
-  renderBacktest();
-  renderWatchlist();
-  const bids = readSide(0), asks = readSide(1);
-  const maxSz = Math.max(1, ...bids.map(l=>l[1]), ...asks.map(l=>l[1]));
-  const row = (px, sz) =>
-    `<div class="lvl"><span class="px">${px.toFixed(2)}</span><span class="sz">${sz.toLocaleString()}</span>
-     <span class="bar" style="width:${(100*sz/maxSz).toFixed(1)}%"></span></div>`;
-  $('asks').innerHTML = asks.slice().reverse().map(l=>row(l[0],l[1])).join('');
-  $('bids').innerHTML = bids.map(l=>row(l[0],l[1])).join('');
-  if(bids.length && asks.length){
-    const mid = (bids[0][0] + asks[0][0]) / 2;
-    $('mid').textContent = mid.toFixed(3);
-    $('spread').textContent = 'spread ' + (asks[0][0] - bids[0][0]).toFixed(2);
+  if(++wlTick % 15 === 0){
+    const rows = Object.entries(symLocates).map(([sym,l])=>({sym,l,
+      hit:M._strategy_stat(l,0), n:M._strategy_stat(l,1), netb:M._strategy_stat(l,6),
+      net:M._strategy_stat(l,3), mid:M._strategy_stat(l,8), ofi:M._engine_ofi(l)}))
+      .sort((a,b)=>b.n-a.n);
+    $('wlcount').textContent = rows.length + ' symbols';
+    $('wlbody').innerHTML = rows.map(r=>
+      `<tr data-s="${r.sym}"><td>${r.sym}</td><td>${r.mid.toFixed(2)}</td>`+
+      `<td class="${r.ofi>=0?'pos':'neg'}">${r.ofi.toLocaleString()}</td>`+
+      `<td class="${r.hit>50?'pos':r.n?'neg':''}">${r.n?r.hit.toFixed(1):'—'}</td><td>${r.n}</td>`+
+      `<td class="${r.netb>=0?'pos':'neg'}">${r.netb.toFixed(1)}</td>`+
+      `<td class="${r.net>=0?'pos':'neg'}">${r.net.toFixed(3)}</td></tr>`).join('');
+    document.querySelectorAll('#wlbody tr').forEach(tr=>tr.onclick=()=>{
+      $('sym').value = tr.dataset.s; curLoc = symLocates[tr.dataset.s]; eqHist=[]; candles=[];
+    });
   }
+  $('clk').textContent = clock();
   const mc = M._engine_msg_count();
   $('mcount').textContent = mc.toLocaleString();
   $('ofi').textContent = M._engine_ofi(curLoc).toLocaleString();
   const now = performance.now();
   if(now - lastRateT > 500){
-    $('rate').textContent = Math.round((mc - lastRateC) / ((now - lastRateT)/1000)).toLocaleString();
+    $('rate').textContent = Math.round((mc-lastRateC)/((now-lastRateT)/1000)).toLocaleString();
     lastRateT = now; lastRateC = mc;
   }
 }
 
-$('sym').onchange = e => { curLoc = symLocates[e.target.value]; eqHist = []; };
-$('ivl').onchange = e => {
-  M._strategy_set_interval(+e.target.value);
-  $('ivln').textContent = e.target.value;
-  eqHist = [];
-};
-$('speed').onchange = e => speed = +e.target.value;
-$('playpause').onclick = e => { playing = !playing; e.target.textContent = playing ? 'pause' : 'play'; };
-$('restart').onclick = () => { M._engine_create(); pos = 0; step(50000); };
+$('sym').onchange = e => { curLoc = symLocates[e.target.value]; eqHist=[]; candles=[]; };
+$('ivl').onchange = e => { M._strategy_set_interval(+e.target.value); $('ivln').textContent = e.target.value; eqHist=[]; };
+$('speed').onchange = e => { speed = +e.target.value; wallStart = performance.now(); tsStart = M._engine_last_ts(); };
+$('playpause').onclick = e => { playing = !playing; e.target.textContent = playing?'pause':'play';
+  if(playing){ wallStart = performance.now(); tsStart = M._engine_last_ts(); } };
+$('restart').onclick = () => { M._engine_create(); pos=0; candles=[]; eqHist=[]; step(60000);
+  wallStart = performance.now(); tsStart = M._engine_last_ts(); };
 </script>
 </body>
 </html>
