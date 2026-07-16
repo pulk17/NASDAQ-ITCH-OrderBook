@@ -1,9 +1,23 @@
 *.NASDAQ_ITCH50
+S071321-v50.txt
+*.itch
 build/
+build-*/
+report/slice.bin
+# Generated demo data — ~550 MB, rebuildable from the tape in ~2 min, and deployed by
+# direct upload (see README "Deploying free"), so it stays out of the repo entirely.
+#   report/tapes/     tools/make_demo.sh  — gzip slices for the in-browser WASM replay
+#   report/features/  tools/extract.sh    — per-symbol Strategy Lab feature series
+# The GitHub Pages workflow deploys from a checkout and therefore needs these committed;
+# un-ignore them only if you take that route instead of Cloudflare direct upload.
+report/tapes/
+report/features/
 *.o
 *.out
 *.exe
 *.log
+__pycache__/
+*.pyc
 third_party/
 */node_modules/
 */package-lock.json

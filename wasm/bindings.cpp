@@ -12,6 +12,8 @@
 static Engine* E = nullptr;
 static MultiOFIStudy* S = nullptr;
 static uint32_t study_interval = 50;
+static uint64_t study_latency = 0;
+static uint32_t locate_msgs[65536];   // per-symbol activity, drives the watchlist
 
 // Persistent framer state: chunks arrive from JS at the caller's pace, and a
 // message may straddle two chunks -- same carry logic as the native framer.
@@ -51,17 +53,29 @@ static inline void observe(const char* buffer){
 
 extern "C" {
 
-EMSCRIPTEN_KEEPALIVE void engine_create(){
-    delete E; E = new Engine(100000);           // browser-sized registry
-    delete S; S = new MultiOFIStudy(study_interval);
-    carry_len = 0; msg_count = 0;
+static MultiOFIStudy* make_study(){
+    auto* s = new MultiOFIStudy(study_interval);
+    s->latency_ns = study_latency;
+    return s;
 }
 
-// Changing the interval restarts the study (fresh stats) without resetting
-// the book -- the live backtester's parameter knob.
+EMSCRIPTEN_KEEPALIVE void engine_create(){
+    delete E; E = new Engine(100000);           // browser-sized registry
+    delete S; S = make_study();
+    carry_len = 0; msg_count = 0; last_ts = 0; last_ts_ns = 0; tape_n = 0;
+    memset(locate_msgs, 0, sizeof locate_msgs);
+}
+
+// Changing the interval or latency restarts the study (fresh stats) without
+// resetting the book -- the live backtester's parameter knobs.
 EMSCRIPTEN_KEEPALIVE void strategy_set_interval(int iv){
     study_interval = (uint32_t)iv;
-    delete S; S = new MultiOFIStudy(study_interval);
+    delete S; S = make_study();
+}
+
+EMSCRIPTEN_KEEPALIVE void strategy_set_latency(double ns){
+    study_latency = (uint64_t)ns;
+    delete S; S = make_study();
 }
 
 EMSCRIPTEN_KEEPALIVE void engine_feed(const uint8_t* chunk, int len_i){
@@ -83,8 +97,9 @@ EMSCRIPTEN_KEEPALIVE void engine_feed(const uint8_t* chunk, int len_i){
                 memcpy(carry + carry_len, p, take); carry_len += take; p += take;
                 if(carry_len == need){
                     observe(reinterpret_cast<const char*>(carry + 2));
+                    last_ts = ts48(carry + 2);
                     uint16_t loc = E->process_message(reinterpret_cast<const char*>(carry + 2));
-                    if(loc) S->on_book_update(loc, E->books[loc]);
+                    if(loc){ locate_msgs[loc]++; S->on_book_update(loc, E->books[loc], last_ts); }
                     msg_count++; carry_len = 0;
                 }
             }
@@ -97,11 +112,35 @@ EMSCRIPTEN_KEEPALIVE void engine_feed(const uint8_t* chunk, int len_i){
         observe(reinterpret_cast<const char*>(p + 2));
         last_ts = ts48(p + 2);
         uint16_t loc = E->process_message(reinterpret_cast<const char*>(p + 2));
-        if(loc) S->on_book_update(loc, E->books[loc]);
+        if(loc){ locate_msgs[loc]++; S->on_book_update(loc, E->books[loc], last_ts); }
         msg_count++;
         p += 2 + (size_t)length;
     }
     if(p < e){ carry_len = (size_t)(e - p); memcpy(carry, p, carry_len); }
+}
+
+// Feed whole messages from chunk until the tape clock passes target_ts (ns
+// since midnight) or the window runs out of complete messages. Returns bytes
+// consumed; the caller advances its cursor by that and re-hands the tail next
+// call, so no carry buffer is needed. This is the live page's only feed path:
+// message-granular pacing keeps 1x replay smooth (an 8KB block can straddle a
+// full second of market time).
+EMSCRIPTEN_KEEPALIVE int engine_feed_until(const uint8_t* chunk, int len_i, double target_ts){
+    const uint8_t* p = chunk;
+    const uint8_t* e = chunk + (size_t)len_i;
+    while(p + 2 <= e){
+        uint16_t length = __builtin_bswap16(*reinterpret_cast<const uint16_t*>(p));
+        if(length == 0 || p + 2 + (size_t)length > e) break;
+        uint64_t ts = ts48(p + 2);
+        if((double)ts >= target_ts) break;
+        observe(reinterpret_cast<const char*>(p + 2));
+        last_ts = ts;
+        uint16_t loc = E->process_message(reinterpret_cast<const char*>(p + 2));
+        if(loc){ locate_msgs[loc]++; S->on_book_update(loc, E->books[loc], last_ts); }
+        msg_count++;
+        p += 2 + (size_t)length;
+    }
+    return (int)(p - chunk);
 }
 
 EMSCRIPTEN_KEEPALIVE double engine_msg_count(){ return (double)msg_count; }
@@ -138,6 +177,24 @@ EMSCRIPTEN_KEEPALIVE int engine_symbol_at(int idx, char* buf){
         }
     }
     return 0;
+}
+
+// Same, but only symbols that have actually traded/quoted in this tape --
+// the directory holds ~8k names, the slice carries messages for a few dozen.
+EMSCRIPTEN_KEEPALIVE int engine_active_at(int idx, char* buf){
+    int seen = 0;
+    for(uint32_t l = 1; l < 65536; l++){
+        if(!locate_msgs[l] || E->locate_to_symbol[l].empty()) continue;
+        if(seen++ == idx){
+            snprintf(buf, 16, "%s", E->locate_to_symbol[l].c_str());
+            return (int)l;
+        }
+    }
+    return 0;
+}
+
+EMSCRIPTEN_KEEPALIVE double engine_locate_msgs(int locate){
+    return (double)locate_msgs[locate];
 }
 
 // Live strategy stats for one symbol. field: 0 hit%, 1 samples, 2 gross $,

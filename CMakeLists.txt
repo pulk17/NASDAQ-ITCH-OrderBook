@@ -13,6 +13,15 @@ add_executable(orderbook
     src/engine.cpp
 )
 
+execute_process(COMMAND git rev-parse --short HEAD
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                OUTPUT_VARIABLE GIT_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_QUIET)
+if(NOT GIT_COMMIT)
+    set(GIT_COMMIT "unknown")
+endif()
+target_compile_definitions(orderbook PRIVATE GIT_COMMIT="${GIT_COMMIT}")
+
 target_include_directories(orderbook PRIVATE include third_party/unordered_dense/include)
 target_compile_options(orderbook PRIVATE -O3 -march=native -flto)
 target_link_options(orderbook PRIVATE -flto)

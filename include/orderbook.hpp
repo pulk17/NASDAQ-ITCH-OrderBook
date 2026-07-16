@@ -28,7 +28,12 @@ struct OrderInfo{
     char     side;
 };
 struct BookSide{
-    static constexpr uint32_t SPAN = 2048;
+    // Ladder window. Build with -DPF_SPAN=8 to shrink it to ~nothing, forcing the
+    // sorted-vector fallback path — i.e. measure the tick-indexed ladder's value.
+#ifndef PF_SPAN
+#define PF_SPAN 2048
+#endif
+    static constexpr uint32_t SPAN = PF_SPAN;
 
     std::vector<uint32_t> ladder;
     uint32_t base_tick   = 0;

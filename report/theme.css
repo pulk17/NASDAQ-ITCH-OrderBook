@@ -1,0 +1,82 @@
+/* PitchFork shared theme — design tokens + common components.
+   Spacing scale: 4 8 14 20 36. Type scale: 10.5 12 13.5 22 hero.
+   Amber is the only accent; green/red are data semantics (up/down, bid/ask). */
+:root{
+  --ink:#0A0D12; --panel:#0F141C; --panel-2:#131A24; --line:#1B232F;
+  --text:#C9D1DC; --dim:#5F6B7A; --faint:#39424F;
+  --amber:#FFB454; --amber-dim:#8A6430;
+  --up:#3ECF8E; --down:#F1637A;
+  --r:6px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--ink)}
+body{
+  font-family:'IBM Plex Mono',ui-monospace,monospace; color:var(--text);
+  max-width:1240px; margin:0 auto; padding:32px 26px 48px;
+  font-size:13.5px; line-height:1.5;
+}
+a{color:var(--amber); text-decoration:none}
+
+header{display:flex; justify-content:space-between; align-items:baseline;
+  border-bottom:1px solid var(--line); padding-bottom:14px}
+.brand{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:19px; letter-spacing:.02em}
+.brand em{font-style:normal; color:var(--amber)}
+
+/* Site nav — identical markup and labels on every page; the current page is
+   rendered as an inert marker rather than a link. Keep the four <a>s in this
+   order everywhere: report, live replay, strategy lab, perf. */
+.brand nav{display:inline-flex; gap:8px; margin-left:14px; flex-wrap:wrap; vertical-align:middle}
+.brand nav a, .brand nav span{
+  font-family:'IBM Plex Mono',ui-monospace,monospace; font-weight:400; font-size:12.5px;
+  letter-spacing:0; border:1px solid var(--line); border-radius:4px; padding:4px 10px;
+  color:var(--amber); white-space:nowrap}
+.brand nav a:hover{border-color:var(--amber); background:rgba(255,180,84,.06)}
+.brand nav span.here{color:var(--dim); background:var(--panel-2); cursor:default}
+
+.panel{background:var(--panel); border:1px solid var(--line); border-radius:var(--r); padding:12px 14px}
+.pt{display:flex; justify-content:space-between; align-items:center; gap:14px;
+  color:var(--dim); font-size:10.5px; text-transform:uppercase; letter-spacing:.13em; margin-bottom:10px}
+.pt .val{color:var(--amber); letter-spacing:0; text-transform:none; font-size:12px}
+canvas{display:block; width:100%}
+
+button,select,input{font:inherit; color:var(--text); background:var(--panel-2);
+  border:1px solid var(--line); border-radius:4px; padding:6px 11px}
+button{color:var(--amber); cursor:pointer}
+button:hover{border-color:var(--amber)}
+select{color:var(--amber); cursor:pointer}
+input::placeholder{color:var(--faint)}
+
+/* segmented control: a row of radio-like buttons that read as one pill */
+.seg{display:inline-flex; border:1px solid var(--line); border-radius:5px; overflow:hidden; background:var(--panel-2)}
+.seg button{border:0; border-radius:0; background:transparent; color:var(--dim); padding:0 14px; height:34px}
+.seg button.on{background:var(--amber); color:#0A0D12; font-weight:600}
+.seg button:not(.on):hover{color:var(--text); background:rgba(255,180,84,.06)}
+
+/* icon/ghost buttons */
+.icon-btn{display:inline-flex; align-items:center; justify-content:center;
+  width:44px; height:44px; padding:0; border-radius:6px}
+.ghost{background:transparent; border-color:var(--line); color:var(--dim); padding:6px 10px; font-size:12px}
+.ghost:hover{color:var(--amber); border-color:var(--amber)}
+
+.chip{display:inline-block; font-size:11px; color:var(--dim); border:1px solid var(--line);
+  border-radius:4px; padding:3px 8px; cursor:pointer; user-select:none}
+.chip.on{color:var(--amber); border-color:var(--amber-dim)}
+.chip:hover{border-color:var(--amber-dim)}
+
+table{width:100%; border-collapse:collapse; font-size:12px}
+thead th{position:sticky; top:0; background:var(--panel); color:var(--dim); font-weight:500;
+  text-transform:uppercase; letter-spacing:.1em; font-size:10px; text-align:right;
+  padding:6px 10px; border-bottom:1px solid var(--line); white-space:nowrap}
+thead th:first-child{text-align:left}
+tbody td{padding:4px 10px; text-align:right; border-bottom:1px solid rgba(27,35,47,.5); color:var(--dim); white-space:nowrap}
+tbody td:first-child{text-align:left; color:var(--text)}
+tbody tr:hover{background:rgba(255,180,84,.04)}
+.pos{color:var(--up)} .neg{color:var(--down)}
+
+details.about{color:var(--dim); font-size:11.5px}
+details.about summary{cursor:pointer; color:var(--dim); list-style:none}
+details.about summary::-webkit-details-marker{display:none}
+details.about summary:hover{color:var(--amber)}
+details.about p{margin-top:8px; max-width:70ch; line-height:1.7; color:var(--faint)}
+
+@media (prefers-reduced-motion: reduce){ *{animation:none!important; transition:none!important} }

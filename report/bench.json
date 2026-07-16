@@ -1,0 +1,131 @@
+{
+ "meta": {
+  "cpu": "13th Gen Intel(R) Core(TM) i7-13650HX",
+  "tape": "S071321-v50.txt",
+  "date": "2026-07-16",
+  "wasm_mps": 17.33,
+  "native_subset_mps": 16.37,
+  "latency": {
+   "mean": 172.5,
+   "p50": 153.0,
+   "p90": 285.0,
+   "p99": 458.0,
+   "p99.9": 760.0,
+   "p99.99": 3811.0,
+   "max": 196172.0,
+   "fingerprint": "1469598103934665603"
+  }
+ },
+ "runs": [
+  {
+   "label": "mmap",
+   "group": "io",
+   "wall_s": 54.1,
+   "mps": 8.52505,
+   "mb_s": 259.507,
+   "seconds": 53.9329,
+   "messages": 459781103.0,
+   "fingerprint": "1469598103934665603"
+  },
+  {
+   "label": "io_uring",
+   "group": "io",
+   "wall_s": 54.4,
+   "mps": 8.46302,
+   "mb_s": 257.619,
+   "seconds": 54.3282,
+   "messages": 459781103.0,
+   "fingerprint": "1469598103934665603"
+  },
+  {
+   "label": "chunked 64 KB",
+   "group": "io",
+   "wall_s": 52.0,
+   "mps": 8.88381,
+   "mb_s": 270.428,
+   "seconds": 51.755,
+   "messages": 459781103.0,
+   "fingerprint": "1469598103934665603"
+  },
+  {
+   "label": "chunked 1 MB",
+   "group": "io",
+   "wall_s": 52.4,
+   "mps": 8.81223,
+   "mb_s": 268.249,
+   "seconds": 52.1753,
+   "messages": 459781103.0,
+   "fingerprint": "1469598103934665603"
+  },
+  {
+   "label": "-O0 (no opt)",
+   "group": "build",
+   "wall_s": 154.4,
+   "mps": 2.98223,
+   "mb_s": 90.7807,
+   "seconds": 154.174,
+   "messages": 459781103.0,
+   "fingerprint": "1469598103934665603"
+  },
+  {
+   "label": "-O2",
+   "group": "build",
+   "wall_s": 53.0,
+   "mps": 8.7151,
+   "mb_s": 265.293,
+   "seconds": 52.7568,
+   "messages": 459781103.0,
+   "fingerprint": "1469598103934665603"
+  },
+  {
+   "label": "-O3 +LTO +native",
+   "group": "build",
+   "wall_s": 51.8,
+   "mps": 8.9072,
+   "mb_s": 271.14,
+   "seconds": 51.619,
+   "messages": 459781103.0,
+   "fingerprint": "1469598103934665603"
+  },
+  {
+   "label": "all optimizations",
+   "group": "engine",
+   "wall_s": 52.0,
+   "mps": 8.87349,
+   "mb_s": 270.114,
+   "seconds": 51.8152,
+   "messages": 459781103.0,
+   "fingerprint": "1469598103934665603"
+  },
+  {
+   "label": "std::unordered_map",
+   "group": "engine",
+   "wall_s": 62.4,
+   "mps": 7.39309,
+   "mb_s": 225.05,
+   "seconds": 62.1906,
+   "messages": 459781103.0,
+   "fingerprint": "1469598103934665603"
+  },
+  {
+   "label": "sorted-vector book",
+   "group": "engine",
+   "wall_s": 72.7,
+   "mps": 6.34091,
+   "mb_s": 193.021,
+   "seconds": 72.5102,
+   "messages": 459781103.0,
+   "fingerprint": "1469598103934665603"
+  },
+  {
+   "label": "no reserve/tuning",
+   "group": "engine",
+   "wall_s": 55.3,
+   "mps": 8.34512,
+   "mb_s": 254.03,
+   "seconds": 55.0958,
+   "messages": 459781103.0,
+   "fingerprint": "1469598103934665603"
+  }
+ ]
+}

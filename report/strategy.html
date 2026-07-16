@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PitchFork · Strategy Lab</title>
+<link rel="icon" href="favicon.svg">
+<meta name="description" content="Write a JavaScript trading strategy and backtest it against a real rebuilt NASDAQ order book across thousands of symbols, marked to mid and net of the spread.">
+<meta property="og:title" content="PitchFork · Strategy Lab">
+<meta property="og:description" content="Write a JavaScript trading strategy and backtest it against a real rebuilt NASDAQ order book across thousands of symbols, marked to mid and net of the spread.">
+<meta property="og:type" content="website">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css">
+<style>
+#load{padding:22px;margin:16px 0;text-align:center;color:var(--dim)}
+#load .segs{display:flex;gap:3px;max-width:420px;margin:12px auto 0}
+#load .segs i{flex:1;height:4px;background:var(--line);border-radius:2px;overflow:hidden;position:relative}
+#load .segs i b{position:absolute;inset:0;width:0;background:var(--amber);display:block}
+#err{display:none;background:#2A1215;border:1px solid var(--down);color:var(--down);border-radius:6px;padding:12px 16px;margin:14px 0;font-size:12.5px}
+.lab{display:grid;grid-template-columns:420px 1fr;gap:14px;margin:16px 0}
+@media(max-width:900px){.lab{grid-template-columns:1fr}}
+.editor .bar{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.editor select{padding:6px 10px;font-size:12.5px}
+.syms{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;min-height:24px}
+.syms .chip{font-size:12px;padding:4px 10px}
+.syms .chip.on{color:#0A0D12;background:var(--amber);border-color:var(--amber);font-weight:600}
+.syms .chip i{font-style:normal;margin-left:6px;opacity:.55}
+.syms .chip:hover i{opacity:1}
+.nosym{color:var(--faint);font-size:11.5px;padding:4px 0}
+.addrow{display:flex;gap:6px}
+.addrow input{flex:1;min-width:0;background:#0B0F16;border:1px solid var(--line);border-radius:6px;color:var(--text);
+  font-family:'IBM Plex Mono',monospace;font-size:12.5px;padding:6px 10px}
+.addrow input:focus{outline:0;border-color:var(--amber)}
+.addrow select{font-size:12px;padding:6px 8px}
+#srcnote{color:var(--faint);font-size:10.5px;margin:6px 2px 10px;letter-spacing:.03em}
+textarea{width:100%;height:250px;background:#0B0F16;border:1px solid var(--line);border-radius:6px;
+  color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.6;padding:12px;resize:vertical;tab-size:2}
+.sig{color:var(--dim);font-size:11px;margin:8px 2px 0;line-height:1.7}
+.sig code{color:var(--amber)}
+#runbtn{background:var(--amber);color:#0A0D12;font-weight:600;border:0;padding:8px 18px}
+#runbtn:disabled{opacity:.4;cursor:not-allowed}
+#cachehint{color:var(--faint);font-size:11px;margin-left:auto}
+#experr{color:var(--down);font-size:11.5px;margin-top:8px;white-space:pre-wrap;display:none}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-bottom:14px}
+@media(max-width:600px){.tiles{grid-template-columns:repeat(2,1fr)}}
+.tile{background:var(--panel);padding:12px 14px}
+.tile .k{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.1em}
+.tile .v{font-size:19px;margin-top:5px;font-weight:600;font-variant-numeric:tabular-nums}
+.tile .v.up{color:var(--up)} .tile .v.down{color:var(--down)} .tile .v.am{color:var(--amber)}
+.tblwrap{overflow-x:auto;margin-bottom:14px}
+#ptbl{width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap}
+#ptbl th{color:var(--dim);font-weight:500;font-size:10px;letter-spacing:.06em;text-transform:uppercase;text-align:right;padding:6px 7px;border-bottom:1px solid var(--line)}
+#ptbl th:first-child{text-align:left}
+#ptbl td{padding:5px 7px;text-align:right;border-bottom:1px solid rgba(27,35,47,.5);color:var(--dim);cursor:pointer;font-variant-numeric:tabular-nums}
+#ptbl td:first-child{text-align:left;color:var(--text)}
+#ptbl tr.sel td{background:rgba(255,180,84,.08)}
+#ptbl tr:hover td{background:rgba(255,180,84,.04)}
+.pos{color:var(--up)} .neg{color:var(--down)}
+.charts .panel{margin-bottom:14px}
+.charts .pt b{color:var(--amber)}
+.tt{position:fixed;pointer-events:none;background:#131A24;border:1px solid var(--line);border-radius:4px;
+  padding:4px 9px;font-size:11px;color:var(--text);white-space:nowrap;z-index:9;display:none}
+.tt b{color:var(--amber)}
+.empty{color:var(--faint);text-align:center;padding:40px;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">PITCHFORK<em>·</em>STRATEGY LAB
+    <nav><a href="index.html">report</a><a href="live.html">live replay</a><span class="here">strategy lab</span><a href="about.html">perf</a></nav></div>
+  <details class="about"><summary>about</summary>
+    <p>Write a strategy as a JavaScript function; it runs every interval against the real
+    rebuilt order book across the symbols you select, marked to mid, net of the quoted
+    half-spread on every position change. The strategy itself always runs live in your
+    browser — nothing is sent anywhere.</p>
+    <p>Features come from one of two places. If <code>report/features/</code> exists, the
+    C++ engine already swept the original multi-gigabyte ITCH tape with
+    <code>--extract</code> and dumped every symbol's series, so any ticker on the tape is
+    one lazy fetch away, sampled exactly every <em>interval</em> messages. Otherwise the
+    engine runs in WebAssembly and replays the shipped slice in the browser: same engine
+    and same features, but limited to the slice's symbols and sampled once per 64 KB
+    block, which makes its effective interval coarser than requested. Either way features
+    are cached after first use, so re-running a tweaked strategy is instant.</p></details>
+</header>
+<div id="err"></div>
+<div id="load"><div id="loadtxt">loading engine…</div><div class="segs" id="loadsegs"></div></div>
+
+<div id="app" hidden>
+  <div class="lab">
+    <div class="editor">
+      <div class="syms" id="syms"></div>
+      <div class="addrow" id="addrow" hidden>
+        <input id="symsearch" list="symlist" placeholder="add symbol…" autocomplete="off" spellcheck="false">
+        <datalist id="symlist"></datalist>
+        <select id="dataset" hidden></select>
+      </div>
+      <div id="srcnote"></div>
+      <div class="bar">
+        <select id="preset"></select>
+        <select id="ivl"><option value="25">ivl 25</option><option value="50" selected>ivl 50</option><option value="100">ivl 100</option><option value="200">ivl 200</option></select>
+        <button id="runbtn">run ▸</button>
+        <span id="cachehint"></span>
+      </div>
+      <textarea id="code" spellcheck="false"></textarea>
+      <div id="experr"></div>
+      <div class="sig">return a target position in <code>[-1, 1]</code> from features <code>f</code>:
+        <code>f.mid</code> <code>f.spread</code> <code>f.ofi</code> <code>f.dofi</code>
+        <code>f.imb</code> <code>f.mom</code> <code>f.ret</code> <code>f.i</code>, and
+        <code>f.t</code> = seconds since midnight ET (<code>34200</code> = 09:30,
+        <code>57600</code> = 16:00). state persists on <code>f.s</code>.</div>
+    </div>
+    <div class="results">
+      <div class="tiles" id="tiles"></div>
+      <div class="tblwrap"><table id="ptbl"></table></div>
+      <div class="charts">
+        <div class="panel"><div class="pt"><span>equity · <b id="focus">—</b> · gross & net</span><span class="val" id="eqval"></span></div><canvas id="equity" height="190"></canvas></div>
+        <div class="panel"><div class="pt"><span>drawdown</span><span class="val" id="ddval"></span></div><canvas id="dd" height="110"></canvas></div>
+        <div class="panel"><div class="pt"><span>rolling sharpe</span><span class="val" id="rsval"></span></div><canvas id="rs" height="110"></canvas></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="tt" id="tt"></div>
+
+<script src="engine.js"></script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+function fail(m){ $('err').style.display='block'; $('err').textContent=m; }
+if(location.protocol === 'file:') fail('Serve over HTTP: cd report && python3 -m http.server 8000');
+
+const PRESETS = {
+  'OFI momentum':      'return Math.sign(f.dofi);',
+  'OFI reversion':     'return -Math.sign(f.dofi);',
+  'Book imbalance':    '// lean with top-of-book pressure\nreturn f.imb;',
+  'Momentum (mid)':    '// follow short-term mid drift\nreturn Math.sign(f.mom);',
+  'Mean reversion':    '// fade the last move\nreturn -Math.sign(f.ret);',
+  'Imbalance + trend': 'return Math.sign(f.imb + 2*f.mom);',
+  'Thresholded OFI':   '// only act on strong flow — skip the noise\nreturn Math.abs(f.dofi) > 1500 ? Math.sign(f.dofi) : 0;',
+  'Tight-spread only':  '// trade only when it is cheap to cross\nreturn f.spread < 0.02 ? Math.sign(f.dofi) : 0;',
+  'Regular hours only': '// f.t is seconds since midnight ET — sit out the thin\n// pre/post sessions where the spread is brutal\nif(f.t < 34200 || f.t > 57600) return 0;   // 09:30–16:00\nreturn Math.sign(f.dofi);',
+  'Scaled imbalance':  '// size proportional to book pressure\nreturn Math.max(-1, Math.min(1, 3 * f.imb));',
+  'EMA cross (stateful)': '// persistent state on f.s: mid vs its EMA\nf.s.ema = f.s.ema ? 0.98*f.s.ema + 0.02*f.mid : f.mid;\nreturn Math.sign(f.mid - f.s.ema);',
+};
+
+let M, DATA=null, LOADED=0, META=null;
+const FEAT = { interval:null, bysym:{} };   // wasm mode: cached per-interval feature series
+let selected = new Set(), focused = null, lastResults = [];
+
+/* Two ways to get the same five features. Both come out of the same engine code, but
+   they do NOT sample at the same density — prefer 'native' for anything quantitative.
+   'native'  — tools/extract.sh ran the C++ engine over the ORIGINAL tape and dumped
+               report/features/<SYM>.f64. Every symbol on the tape, one lazy fetch each,
+               sampled exactly every `interval` messages. Used when features/index.json
+               exists.
+   'wasm'    — no feature files, so replay the shipped slice in the browser. Limited to
+               the slice's symbols, and it can only sample once per 64 KB feed block:
+               the book is inspected between blocks, so a symbol carrying more than
+               `interval` messages within one block still yields a single sample. Its
+               effective interval is therefore coarser than requested (~4.5x on AAPL). */
+let MODE = 'wasm', FIDX = null, FSETS = [], FDIR = '';
+let FCACHE = {};                            // native mode: sym -> feature rows at base interval
+
+/* ---------- progressive loader ---------- */
+async function loadTape(){
+  const bar=$('loadsegs'), txt=$('loadtxt');
+  let days = await fetch('tapes/manifest.json').then(r=>r.ok?r.json():null).catch(()=>null);
+  const dir = days && days.length ? days[0].path+'/' : '';
+  let meta; try{ meta = await fetch(dir+'meta.json').then(r=>r.json()); } catch(e){ return fail('no tape — run tools/make_demo.sh'); }
+  META = meta; const buf = new Uint8Array(meta.raw_bytes); DATA = buf;
+  bar.innerHTML = meta.chunks.map(()=>'<i><b></b></i>').join('');
+  let off=0;
+  for(let ci=0; ci<meta.chunks.length; ci++){
+    const c = meta.chunks[ci];
+    const rd = (await fetch(c.url||(dir+c.file))).body.pipeThrough(new DecompressionStream('gzip')).getReader();
+    for(;;){ const {done,value}=await rd.read(); if(done) break;
+      buf.set(value,off); off+=value.length; LOADED=off;
+      bar.children[ci].firstChild.style.width = Math.min(100,100*(off-chunkStart(ci))/c.raw_bytes)+'%';
+      txt.textContent = `loading tape · ${(off/1e6).toFixed(0)} MB`;
+    }
+  }
+}
+function chunkStart(ci){ let s=0; for(let i=0;i<ci;i++) s+=META.chunks[i].raw_bytes; return s; }
+
+boot().catch(e => fail('failed to start: '+e));
+async function boot(){
+  // one entry per ITCH tape that tools/extract.sh has swept
+  FSETS = await fetch('features/manifest.json').then(r=>r.ok?r.json():null).catch(()=>null) || [];
+  if(FSETS.length){
+    MODE = 'native';
+    await loadSet(FSETS[0].id);             // newest tape first
+  } else {
+    MODE = 'wasm';                          // no feature files — replay the shipped slice
+    try{ M = await PitchFork(); } catch(e){ return fail('WASM failed to load: '+e); }
+    await loadTape();
+    if($('err').style.display==='block') return;
+  }
+  $('load').hidden=true; $('app').hidden=false;
+  initUI();
+  run();
+}
+// Switch datasets: each tape has its own symbol universe, so drop the caches.
+async function loadSet(id){
+  const set = FSETS.find(s=>s.id===id) || FSETS[0];
+  FDIR = set.path+'/';
+  FIDX = await fetch(FDIR+'index.json').then(r=>r.json());
+  FCACHE = {}; selected.clear(); focused = null;
+}
+const symList = () => MODE==='native' ? FIDX.symbols.map(s=>s.sym) : META.symbols;
+
+function initUI(){
+  symList().slice(0,3).forEach(s=>selected.add(s));          // default: three most active
+  if(MODE==='native'){
+    $('addrow').hidden = false;
+    $('symlist').innerHTML = symList().map(s=>`<option value="${s}">`).join('');
+    if(FSETS.length > 1){                                     // more than one tape swept
+      $('dataset').hidden = false;
+      $('dataset').innerHTML = FSETS.map(s=>`<option value="${s.id}">${s.label}</option>`).join('');
+      $('dataset').onchange = async e => {
+        $('runbtn').disabled = true; $('runbtn').textContent = 'loading…';
+        await loadSet(e.target.value);
+        symList().slice(0,3).forEach(s=>selected.add(s));
+        $('symlist').innerHTML = symList().map(s=>`<option value="${s}">`).join('');
+        setSrcNote(); drawChips(); run();
+      };
+    }
+    setSrcNote();
+    // Samples were taken every FIDX.interval messages, so any whole multiple of that
+    // is an exact subsample — no re-extraction needed.
+    $('ivl').innerHTML = [1,2,4,8].map(k=>
+      `<option value="${FIDX.interval*k}"${k===1?' selected':''}>ivl ${FIDX.interval*k}</option>`).join('');
+    $('symsearch').onchange = () => {
+      const v = $('symsearch').value.trim().toUpperCase();
+      $('symsearch').value = '';
+      if(!v || selected.has(v)) return;
+      if(!symList().includes(v)){ $('experr').textContent = `${v} is not on the tape`; $('experr').style.display='block'; return; }
+      selected.add(v); drawChips(); run();
+    };
+  } else {
+    $('srcnote').textContent = `${symList().length} symbols · WASM replay of the ${(META.raw_bytes/1e6).toFixed(0)} MB slice `
+      + `· interval is approximate — run tools/extract.sh for every symbol on the tape`;
+  }
+  drawChips();
+  $('runbtn').disabled = false;
+  $('syms').onclick = e => { const c=e.target.closest('.chip'); if(!c) return;
+    const s = c.dataset.s;
+    if(MODE==='native'){ selected.delete(s); drawChips(); run(); }   // chip lists the selection
+    else { selected.has(s) ? selected.delete(s) : selected.add(s); c.classList.toggle('on'); }
+  };
+  $('preset').innerHTML = Object.keys(PRESETS).map(p=>`<option>${p}</option>`).join('');
+  $('code').value = PRESETS['OFI momentum'];
+  $('preset').onchange = e => $('code').value = PRESETS[e.target.value];
+  $('ivl').onchange = () => { FEAT.interval = null; };     // wasm mode: interval change invalidates cache
+  $('runbtn').onclick = run;
+}
+function setSrcNote(){
+  $('srcnote').textContent = `${symList().length} symbols · extracted from ${FIDX.tape}`;
+}
+function drawChips(){
+  const list = MODE==='native' ? [...selected] : symList();
+  $('syms').innerHTML = list.map(s =>
+    `<span class="chip${selected.has(s)?' on':''}" data-s="${s}">${s}${MODE==='native'?'<i>×</i>':''}</span>`
+  ).join('') || '<span class="nosym">no symbols — add one below</span>';
+}
+
+/* ---------- native mode: lazy-fetch one symbol's extracted features ---------- */
+async function loadFeat(sym){
+  if(FCACHE[sym]) return;
+  const e = FIDX.symbols.find(s=>s.sym===sym); if(!e) return;
+  const buf = await fetch(e.url || (FDIR+e.file)).then(r=>r.arrayBuffer());
+  const a = new Float64Array(buf), out = new Array(a.length/5);
+  for(let i=0,k=0; i<a.length; i+=5,k++)
+    out[k] = { t:a[i], mid:a[i+1], spread:a[i+2], ofi:a[i+3], imb:a[i+4] };
+  FCACHE[sym] = out;
+}
+
+/* ---------- one replay pass -> cached feature series for every symbol ---------- */
+const CB={ptr:0,cap:0}; function scratch(n){ if(CB.cap<n){ if(CB.ptr)M._free(CB.ptr); CB.ptr=M._malloc(n); CB.cap=n; } return CB.ptr; }
+const lvlP=()=>lvlP.p||(lvlP.p=M._malloc(8*8)); const symBuf=()=>symBuf.p||(symBuf.p=M._malloc(16));
+function topLevels(loc){
+  const p=lvlP();
+  const kb=M._engine_levels(loc,0,p,2), ub=new Uint32Array(M.HEAPU32.buffer,p,4);
+  const bid=kb?ub[0]/1e4:0, bidSz=kb?ub[1]+(kb>1?ub[3]:0):0;
+  const ka=M._engine_levels(loc,1,p,2), ua=new Uint32Array(M.HEAPU32.buffer,p,4);
+  const ask=ka?ua[0]/1e4:0, askSz=ka?ua[1]+(ka>1?ua[3]:0):0;
+  return {bid,ask,bidSz,askSz};
+}
+async function extract(interval){
+  if(FEAT.interval === interval) return;                    // cached
+  const locs = {}, last = {}, bysym = {};
+  for(const s of META.symbols){ bysym[s]=[]; last[s]=0; locs[s]=0; }
+  M._engine_create();
+  const p = scratch(1<<16); let fed=0, resolved=0;
+  const symPtrs = META.symbols.map(s=>{ const sp=M._malloc(16); M.stringToUTF8(s,sp,16); return [s,sp]; });
+  for(;;){
+    const win=Math.min(1<<16, LOADED-fed); if(win<=0) break;
+    M.HEAPU8.set(DATA.subarray(fed,fed+win), p);
+    fed += M._engine_feed_until(p, win, Infinity);
+    if(resolved < META.symbols.length){
+      for(const [s,sp] of symPtrs){ if(locs[s]<=0){ const l=M._engine_locate(sp); if(l){ locs[s]=l; resolved++; } } }
+    }
+    for(const s of META.symbols){ const loc=locs[s]; if(loc<=0) continue;
+      const m=M._engine_locate_msgs(loc);
+      if(m-last[s] >= interval){ last[s]=m;
+        const L=topLevels(loc);
+        if(L.bid && L.ask && L.bid<L.ask){
+          // t is seconds since midnight ET, same as the native extractor emits
+          bysym[s].push({ t:M._engine_last_ts()/1e9, mid:(L.bid+L.ask)/2, spread:L.ask-L.bid,
+                          ofi:M._engine_ofi(loc), imb:(L.bidSz+L.askSz)?(L.bidSz-L.askSz)/(L.bidSz+L.askSz):0 });
+        }
+      }
+    }
+    if((fed & 0x3FFFFF) < (1<<16)){ $('runbtn').textContent='extracting '+(100*fed/LOADED).toFixed(0)+'%'; await new Promise(r=>setTimeout(r)); }
+  }
+  for(const [,sp] of symPtrs) M._free(sp);
+  FEAT.interval = interval; FEAT.bysym = bysym;
+}
+
+/* ---------- pure JS backtest over a cached feature array ---------- */
+function backtest(F, strat){
+  let pos=0, pnl=0, cost=0, peak=0, maxDD=0, rSum=0, rSum2=0, dnSum2=0, n=0, wins=0, losses=0, winSum=0, lossSum=0, trades=0, inPos=0;
+  let prevMid=0, prevOfi=0; const mh=[], rets=[], eqG=[], eqN=[], state={};
+  for(let k=0;k<F.length;k++){
+    const s=F[k];
+    if(prevMid>0){
+      const dmid=s.mid-prevMid; pnl += pos*dmid;
+      const r=pos*dmid/prevMid; rSum+=r; rSum2+=r*r; if(r<0)dnSum2+=r*r; n++;
+      if(r>0){wins++;winSum+=r;} else if(r<0){losses++;lossSum-=r;}
+      if(pos!==0)inPos++;
+      mh.push(s.mid); if(mh.length>20)mh.shift();
+      const mom = mh.length>1?(s.mid-mh[0])/mh[0]:0;
+      let want = strat({mid:s.mid, spread:s.spread, ofi:s.ofi, dofi:s.ofi-prevOfi, imb:s.imb,
+                        mom, ret:dmid/prevMid, t:s.t, i:n, s:state});
+      want = Math.max(-1, Math.min(1, +want||0));
+      if(want!==pos){ cost += Math.abs(want-pos)*s.spread/2; trades++; }
+      pos = want;
+      const net=pnl-cost; if(net>peak)peak=net; if(peak-net>maxDD)maxDD=peak-net;
+      rets.push(r); eqG.push(pnl); eqN.push(net);
+    }
+    prevMid=s.mid; prevOfi=s.ofi;
+  }
+  const m=n?rSum/n:0, v=n?rSum2/n-m*m:0;
+  return { n, pnl, net:pnl-cost, cost, maxDD, wins, losses, winSum, lossSum, trades, inPos,
+           sharpe: n>1&&v>0? m/Math.sqrt(v)*Math.sqrt(n):0,
+           sortino: n>1&&dnSum2>0? m/Math.sqrt(dnSum2/n)*Math.sqrt(n):0,
+           calmar: maxDD>1e-9?(pnl-cost)/maxDD:0, eqG, eqN, rets };
+}
+
+/* ---------- run: extract (cached) then backtest each selected symbol ---------- */
+let running=false;
+async function run(){
+  if(running || (MODE==='wasm' && !DATA)) return;
+  const syms=[...selected]; if(!syms.length){ $('experr').textContent='select at least one symbol'; $('experr').style.display='block'; return; }
+  running=true; $('runbtn').disabled=true; $('experr').style.display='none';
+  const interval=+$('ivl').value;
+  let strat;
+  try{ strat=new Function('f',$('code').value); strat({mid:1,spread:0,ofi:0,dofi:0,imb:0,mom:0,ret:0,t:0,i:0,s:{}}); }
+  catch(e){ $('experr').textContent='strategy error: '+e.message; $('experr').style.display='block'; running=false; $('runbtn').disabled=false; return; }
+
+  const t=performance.now();
+  let hint;
+  if(MODE==='native'){
+    const missing = syms.filter(s=>!FCACHE[s]);
+    if(missing.length) $('runbtn').textContent='fetching…';
+    await Promise.all(syms.map(loadFeat));
+    const k = Math.max(1, Math.round(interval / FIDX.interval));   // exact subsample
+    lastResults = syms.map(s=>{
+      const F = FCACHE[s] || [];
+      return {sym:s, ...backtest(k>1 ? F.filter((_,i)=>i%k===0) : F, strat)};
+    });
+    hint = (missing.length ? `fetched ${missing.length} · ` : 'cached · ');
+  } else {
+    const cached = FEAT.interval===interval;
+    await extract(interval);                                 // instant if cached
+    lastResults = syms.map(s=>({sym:s, ...backtest(FEAT.bysym[s]||[], strat)}));
+    hint = cached ? 'cached · ' : 'extracted · ';
+  }
+  $('cachehint').textContent = hint+(performance.now()-t).toFixed(0)+' ms';
+  $('runbtn').textContent='run ▸'; $('runbtn').disabled=false; running=false;
+  report();
+}
+
+function report(){
+  const R=lastResults.filter(r=>r.n>=2);
+  if(!R.length){ $('tiles').innerHTML='<div class="empty" style="grid-column:1/-1">no samples for the selected symbols</div>';
+    $('ptbl').innerHTML=''; for(const id of ['equity','dd','rs']) ctx2d($(id),$(id).getAttribute('height')|0); return; }
+  const sum=k=>R.reduce((a,r)=>a+r[k],0), mean=k=>sum(k)/R.length;
+  const prof=R.filter(r=>r.net>0).length, best=R.reduce((a,b)=>b.net>a.net?b:a), worst=R.reduce((a,b)=>b.net<a.net?b:a);
+  const tiles=[
+    ['Σ net P&L',(sum('net')>=0?'+$':'−$')+Math.abs(sum('net')).toFixed(3), sum('net')>=0?'up':'down'],
+    ['mean sharpe',mean('sharpe').toFixed(2), mean('sharpe')>=0?'up':'down'],
+    ['mean sortino',mean('sortino').toFixed(2), mean('sortino')>=0?'up':'down'],
+    ['profitable',prof+' / '+R.length, prof>R.length/2?'up':'down'],
+    ['Σ gross',(sum('pnl')>=0?'+$':'−$')+Math.abs(sum('pnl')).toFixed(3), sum('pnl')>=0?'up':'down'],
+    ['Σ spread cost','−$'+sum('cost').toFixed(3),'down'],
+    ['best',best.sym+' '+(best.net>=0?'+$':'−$')+Math.abs(best.net).toFixed(2), 'am'],
+    ['worst',worst.sym+' '+(worst.net>=0?'+$':'−$')+Math.abs(worst.net).toFixed(2), 'am'],
+  ];
+  $('tiles').innerHTML = tiles.map(([k,v,c])=>`<div class="tile"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`).join('');
+
+  const COLS = [   // [header, value, class] — one row of metrics per selected symbol
+    ['net $',    r=>r.net.toFixed(3),                    r=>r.net>=0?'pos':'neg'],
+    ['gross $',  r=>r.pnl.toFixed(3),                    r=>r.pnl>=0?'pos':'neg'],
+    ['cost $',   r=>'−'+r.cost.toFixed(3),               ()=>'neg'],
+    ['sharpe',   r=>r.sharpe.toFixed(2),                 r=>r.sharpe>=0?'pos':'neg'],
+    ['sortino',  r=>r.sortino.toFixed(2),                r=>r.sortino>=0?'pos':'neg'],
+    ['calmar',   r=>r.calmar.toFixed(2),                 r=>r.calmar>=0?'pos':'neg'],
+    ['max dd',   r=>r.maxDD.toFixed(3),                  ()=>''],
+    ['pf',       r=>r.lossSum>0?(r.winSum/r.lossSum).toFixed(2):'∞',
+                                                         r=>r.winSum>=r.lossSum?'pos':'neg'],
+    ['win %',    r=>((r.wins+r.losses)?100*r.wins/(r.wins+r.losses):0).toFixed(1), ()=>''],
+    ['trades',   r=>r.trades.toLocaleString(),           ()=>''],
+    ['exp',      r=>(100*r.inPos/r.n).toFixed(0)+'%',    ()=>''],
+    ['samples',  r=>r.n.toLocaleString(),                ()=>''],
+  ];
+  $('ptbl').innerHTML =
+    '<thead><tr><th>symbol</th>'+COLS.map(c=>`<th>${c[0]}</th>`).join('')+'</tr></thead><tbody>'+
+    R.slice().sort((a,b)=>b.net-a.net).map(r=>
+      `<tr data-s="${r.sym}"><td>${r.sym}</td>`+
+      COLS.map(([,v,c])=>`<td class="${c(r)}">${v(r)}</td>`).join('')+'</tr>').join('')+
+    '</tbody>';
+  $('ptbl').onclick = e => { const tr=e.target.closest('tr'); if(tr&&tr.dataset.s) focus(tr.dataset.s); };
+
+  focus(best.sym);
+}
+function focus(sym){
+  const r = lastResults.find(x=>x.sym===sym); if(!r) return;
+  focused = sym; $('focus').textContent = sym;
+  for(const tr of document.querySelectorAll('#ptbl tr')) tr.classList.toggle('sel', tr.dataset.s===sym);
+  drawEquity(r.eqG, r.eqN); drawDrawdown(r.eqN); drawRollingSharpe(r.rets);
+  $('eqval').textContent = 'net '+(r.net>=0?'+$':'−$')+Math.abs(r.net).toFixed(3);
+}
+function hms2ns(s){ const [h,m,x]=s.split(':').map(Number); return (h*3600+m*60+x)*1e9; }
+
+/* ---------- charts (focused symbol) ---------- */
+function ctx2d(c,h){ const dpr=devicePixelRatio||1,w=c.clientWidth;
+  if(c._w!==w||c._h!==h){c.width=w*dpr;c.height=h*dpr;c.style.height=h+'px';c._w=w;c._h=h;}
+  const g=c.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);return [g,w,h]; }
+function ds(arr,cap){ if(arr.length<=cap) return arr.map((v,i)=>[i,v]);
+  const out=[],st=arr.length/cap; for(let k=0;k<cap;k++){const i=Math.floor(k*st); out.push([i,arr[i]]);} return out; }
+const hovers={};
+// Fold rather than spread: a full-tape symbol carries >100k samples, and
+// Math.min(...arr) at that length blows the call stack.
+function range(seed, ...arrs){ let lo=seed, hi=seed;
+  for(const a of arrs) for(let i=0;i<a.length;i++){ const v=a[i]; if(v<lo)lo=v; if(v>hi)hi=v; }
+  return [lo,hi]; }
+function drawEquity(G,N){
+  const [g,w,h]=ctx2d($('equity'),190); if(G.length<2) return;
+  const pg=ds(G,600), pn=ds(N,600);
+  let [lo,hi]=range(0,G,N), pad=(hi-lo)*0.1||0.01;
+  const X=i=>8+(w-16)*i/(G.length-1), Y=v=>h-12-(h-24)*(v-(lo-pad))/((hi+pad)-(lo-pad));
+  g.strokeStyle='#1B232F'; g.beginPath(); g.moveTo(8,Y(0)); g.lineTo(w-8,Y(0)); g.stroke();
+  const grad=g.createLinearGradient(0,0,0,h); grad.addColorStop(0,'rgba(255,180,84,.13)'); grad.addColorStop(1,'rgba(255,180,84,0)');
+  g.beginPath(); pg.forEach(([i,v],k)=>k?g.lineTo(X(i),Y(v)):g.moveTo(X(i),Y(v))); g.strokeStyle='#FFB454'; g.lineWidth=1.6; g.stroke();
+  g.lineTo(X(pg[pg.length-1][0]),Y(lo-pad)); g.lineTo(X(pg[0][0]),Y(lo-pad)); g.closePath(); g.fillStyle=grad; g.fill();
+  g.beginPath(); pn.forEach(([i,v],k)=>k?g.lineTo(X(i),Y(v)):g.moveTo(X(i),Y(v)));
+  g.strokeStyle='rgba(241,99,122,.85)'; g.lineWidth=1.2; g.setLineDash([4,3]); g.stroke(); g.setLineDash([]);
+  g.fillStyle='#5F6B7A'; g.font='10px IBM Plex Mono'; g.fillText('$'+hi.toFixed(2),10,Y(hi)+10); g.fillText('net',w-30,Y(N[N.length-1])-4);
+  hovers.equity={G,N,n:G.length};
+}
+function drawDrawdown(N){
+  const [g,w,h]=ctx2d($('dd'),110); if(N.length<2) return;
+  let pk=-1e18; const D=N.map(v=>{if(v>pk)pk=v; return v-pk;}); const lo=range(-0.0001,D)[0];
+  const p=ds(D,600), X=i=>8+(w-16)*i/(N.length-1), Y=v=>8+(h-16)*(v/lo);
+  g.fillStyle='rgba(241,99,122,.2)'; g.strokeStyle='#F1637A';
+  g.beginPath(); g.moveTo(X(0),Y(0)); p.forEach(([i,v])=>g.lineTo(X(i),Y(v))); g.lineTo(X(p[p.length-1][0]),Y(0)); g.closePath(); g.fill(); g.stroke();
+  g.fillStyle='#5F6B7A'; g.font='10px IBM Plex Mono'; g.fillText('−$'+(-lo).toFixed(3),10,h-6);
+  $('ddval').textContent='max −$'+(-lo).toFixed(3); hovers.dd={D,n:D.length};
+}
+function drawRollingSharpe(rets){
+  const [g,w,h]=ctx2d($('rs'),110); if(rets.length<4) return;
+  const W=Math.max(20,Math.floor(rets.length/40)), rs=[]; let s=0,s2=0; const q=[];
+  for(const r of rets){ q.push(r); s+=r; s2+=r*r; if(q.length>W){const o=q.shift(); s-=o; s2-=o*o;}
+    if(q.length>=Math.min(W,20)){ const m=s/q.length, v=s2/q.length-m*m; rs.push(v>0?m/Math.sqrt(v)*Math.sqrt(q.length):0); } else rs.push(0); }
+  let [lo,hi]=range(0,rs), pad=(hi-lo)*0.1||0.5;
+  const p=ds(rs,600), X=i=>8+(w-16)*i/(rs.length-1), Y=v=>h-10-(h-20)*(v-(lo-pad))/((hi+pad)-(lo-pad));
+  g.strokeStyle='#1B232F'; g.beginPath(); g.moveTo(8,Y(0)); g.lineTo(w-8,Y(0)); g.stroke();
+  g.strokeStyle='#FFB454'; g.lineWidth=1.4; g.beginPath(); p.forEach(([i,v],k)=>k?g.lineTo(X(i),Y(v)):g.moveTo(X(i),Y(v))); g.stroke();
+  g.fillStyle='#5F6B7A'; g.font='10px IBM Plex Mono'; g.fillText(hi.toFixed(1),10,Y(hi)+10); g.fillText(lo.toFixed(1),10,Y(lo)-2);
+  $('rsval').textContent='window '+W+' · '+(rs[rs.length-1]||0).toFixed(2); hovers.rs={rs,n:rs.length,W};
+}
+function bindHover(id, fmt){
+  const c=$(id), tt=$('tt');
+  c.onpointermove=e=>{ const H=hovers[id]; if(!H){tt.style.display='none';return;}
+    const rect=c.getBoundingClientRect(); const i=Math.round(((e.clientX-rect.left)/rect.width*c.clientWidth-8)/(c.clientWidth-16)*(H.n-1));
+    if(i<0||i>=H.n){tt.style.display='none';return;}
+    tt.innerHTML=fmt(H,i); tt.style.left=(e.clientX+12)+'px'; tt.style.top=(e.clientY-8)+'px'; tt.style.display='block'; };
+  c.onpointerleave=()=>tt.style.display='none';
+}
+bindHover('equity',(H,i)=>`sample <b>${i}</b> · gross ${H.G[i]>=0?'+':''}$${H.G[i].toFixed(3)} · net ${H.N[i]>=0?'+':''}$${H.N[i].toFixed(3)}`);
+bindHover('dd',(H,i)=>`sample <b>${i}</b> · drawdown −$${(-H.D[i]).toFixed(3)}`);
+bindHover('rs',(H,i)=>`sample <b>${i}</b> · sharpe(${H.W}) ${H.rs[i].toFixed(2)}`);
+</script>
+</body>
+</html>
