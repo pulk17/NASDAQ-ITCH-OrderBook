@@ -113,7 +113,7 @@ function ctx(id,h){ const c=$(id),dpr=devicePixelRatio||1,w=c.clientWidth;
 function render(B){
   const runs=B.runs, by=l=>runs.find(r=>r.label===l);
   const base=by('mmap')||runs[0], L=B.meta.latency||{};
-  $('rig').textContent=B.meta.cpu;
+  $('rig').innerHTML=`tested on <b style="color:var(--text)">${B.meta.cpu}</b> · tape <b style="color:var(--text)">${B.meta.tape}</b>`;
   $('peak').textContent=(base.mps||0).toFixed(1)+'M';
   $('p50').textContent=(L.p50||0)+' ns';
   $('p99').textContent=(L.p99||0)+' ns';

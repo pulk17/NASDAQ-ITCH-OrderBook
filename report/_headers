@@ -1,0 +1,31 @@
+# Cloudflare Pages / Netlify header rules.
+#
+# A recorded ITCH tape is immutable: 2021-07-13 will never have different bytes, and a
+# re-slice under new parameters writes a new directory rather than editing one. So the
+# slices, the per-symbol feature series and the wasm binary are safe to pin in the
+# browser for a year — the first visit pays the download, every visit after is a cache
+# hit with no network request. Without this the browser revalidates ~550 MB on every
+# page load.
+#
+# HTML and the manifests are the mutable parts and must always be rechecked, or a
+# redeploy would stay invisible to anyone who had already visited. These rules come
+# last so they win for the .json files nested under the trees above; the loaders also
+# request every manifest with {cache:'no-cache'} so freshness never depends on that.
+
+/tapes/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/features/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/engine.wasm
+  Cache-Control: public, max-age=31536000, immutable
+
+/engine.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.json
+  Cache-Control: public, max-age=0, must-revalidate
+
+/*.html
+  Cache-Control: public, max-age=0, must-revalidate

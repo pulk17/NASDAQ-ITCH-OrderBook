@@ -193,6 +193,7 @@ def main():
     tid, label = tape_id(src)
     meta = {
         'id': tid, 'label': label, 'cut': cut,
+        'tape': os.path.basename(src),          # provenance: which ITCH file this came from
         'raw_bytes': ch.total_raw, 'messages': kept, 'snapshot_adds': snapped,
         'span': {'from': hms(span_from), 'to': hms(span_to)},
         'symbols': sorted(kept_syms),

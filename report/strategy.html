@@ -164,9 +164,9 @@ let FCACHE = {};                            // native mode: sym -> feature rows 
 /* ---------- progressive loader ---------- */
 async function loadTape(){
   const bar=$('loadsegs'), txt=$('loadtxt');
-  let days = await fetch('tapes/manifest.json').then(r=>r.ok?r.json():null).catch(()=>null);
+  let days = await fetch('tapes/manifest.json', {cache:'no-cache'}).then(r=>r.ok?r.json():null).catch(()=>null);
   const dir = days && days.length ? days[0].path+'/' : '';
-  let meta; try{ meta = await fetch(dir+'meta.json').then(r=>r.json()); } catch(e){ return fail('no tape — run tools/make_demo.sh'); }
+  let meta; try{ meta = await fetch(dir+'meta.json', {cache:'no-cache'}).then(r=>r.json()); } catch(e){ return fail('no tape — run tools/make_demo.sh'); }
   META = meta; const buf = new Uint8Array(meta.raw_bytes); DATA = buf;
   bar.innerHTML = meta.chunks.map(()=>'<i><b></b></i>').join('');
   let off=0;
@@ -185,7 +185,7 @@ function chunkStart(ci){ let s=0; for(let i=0;i<ci;i++) s+=META.chunks[i].raw_by
 boot().catch(e => fail('failed to start: '+e));
 async function boot(){
   // one entry per ITCH tape that tools/extract.sh has swept
-  FSETS = await fetch('features/manifest.json').then(r=>r.ok?r.json():null).catch(()=>null) || [];
+  FSETS = await fetch('features/manifest.json', {cache:'no-cache'}).then(r=>r.ok?r.json():null).catch(()=>null) || [];
   if(FSETS.length){
     MODE = 'native';
     await loadSet(FSETS[0].id);             // newest tape first
@@ -203,7 +203,7 @@ async function boot(){
 async function loadSet(id){
   const set = FSETS.find(s=>s.id===id) || FSETS[0];
   FDIR = set.path+'/';
-  FIDX = await fetch(FDIR+'index.json').then(r=>r.json());
+  FIDX = await fetch(FDIR+'index.json', {cache:'no-cache'}).then(r=>r.json());
   FCACHE = {}; selected.clear(); focused = null;
 }
 const symList = () => MODE==='native' ? FIDX.symbols.map(s=>s.sym) : META.symbols;
@@ -267,7 +267,12 @@ function drawChips(){
 async function loadFeat(sym){
   if(FCACHE[sym]) return;
   const e = FIDX.symbols.find(s=>s.sym===sym); if(!e) return;
-  const buf = await fetch(e.url || (FDIR+e.file)).then(r=>r.arrayBuffer());
+  const url = e.url || (FDIR+e.file);
+  const r = await fetch(url);
+  // A 404 body would otherwise sail into Float64Array and throw something opaque.
+  if(!r.ok) throw new Error(`${url} → HTTP ${r.status}`);
+  const buf = await r.arrayBuffer();
+  if(buf.byteLength === 0 || buf.byteLength % 40) throw new Error(`${url} is not a 5×f64 series (${buf.byteLength} bytes)`);
   const a = new Float64Array(buf), out = new Array(a.length/5);
   for(let i=0,k=0; i<a.length; i+=5,k++)
     out[k] = { t:a[i], mid:a[i+1], spread:a[i+2], ofi:a[i+3], imb:a[i+4] };
@@ -359,25 +364,34 @@ async function run(){
 
   const t=performance.now();
   let hint;
-  if(MODE==='native'){
-    const missing = syms.filter(s=>!FCACHE[s]);
-    if(missing.length) $('runbtn').textContent='fetching…';
-    await Promise.all(syms.map(loadFeat));
-    const k = Math.max(1, Math.round(interval / FIDX.interval));   // exact subsample
-    lastResults = syms.map(s=>{
-      const F = FCACHE[s] || [];
-      return {sym:s, ...backtest(k>1 ? F.filter((_,i)=>i%k===0) : F, strat)};
-    });
-    hint = (missing.length ? `fetched ${missing.length} · ` : 'cached · ');
-  } else {
-    const cached = FEAT.interval===interval;
-    await extract(interval);                                 // instant if cached
-    lastResults = syms.map(s=>({sym:s, ...backtest(FEAT.bysym[s]||[], strat)}));
-    hint = cached ? 'cached · ' : 'extracted · ';
+  // Whatever happens below, the button has to come back — an unhandled rejection
+  // here used to strand it on "fetching…" with running stuck true and no message.
+  try{
+    if(MODE==='native'){
+      const missing = syms.filter(s=>!FCACHE[s]);
+      if(missing.length) $('runbtn').textContent='fetching…';
+      await Promise.all(syms.map(s=>loadFeat(s)));
+      const k = Math.max(1, Math.round(interval / FIDX.interval));   // exact subsample
+      lastResults = syms.map(s=>{
+        const F = FCACHE[s] || [];
+        return {sym:s, ...backtest(k>1 ? F.filter((_,i)=>i%k===0) : F, strat)};
+      });
+      hint = (missing.length ? `fetched ${missing.length} · ` : 'cached · ');
+    } else {
+      const cached = FEAT.interval===interval;
+      await extract(interval);                               // instant if cached
+      lastResults = syms.map(s=>({sym:s, ...backtest(FEAT.bysym[s]||[], strat)}));
+      hint = cached ? 'cached · ' : 'extracted · ';
+    }
+    $('cachehint').textContent = hint+(performance.now()-t).toFixed(0)+' ms';
+    report();
+  } catch(e){
+    $('experr').textContent = 'could not run: '+e.message+'\nreload the page; if it persists the feature files may be missing — run tools/extract.sh';
+    $('experr').style.display = 'block';
+    $('cachehint').textContent = 'failed';
+  } finally {
+    $('runbtn').textContent='run ▸'; $('runbtn').disabled=false; running=false;
   }
-  $('cachehint').textContent = hint+(performance.now()-t).toFixed(0)+' ms';
-  $('runbtn').textContent='run ▸'; $('runbtn').disabled=false; running=false;
-  report();
 }
 
 function report(){
