@@ -220,7 +220,7 @@ function renderDetail(sym){
   const se = 50/Math.sqrt(d.pre_n||1), sig = (d.pre_hit-50)/se;
   document.getElementById('versus').innerHTML = `
     <div class="row"><span>chance</span><span>50.00%</span></div>
-    <div class="row"><span>edge over chance</span><span>${(d.pre_hit-50).toFixed(2)} pts ≈ ${sig.toFixed(0)}σ</span></div>
+    <div class="row"><span>edge over chance</span><span>${(d.pre_hit-50).toFixed(2)} pts (naive iid ${sig.toFixed(0)}σ)</span></div>
     <div class="row"><span>same-interval agreement</span><span>${d.con_hit.toFixed(2)}%</span></div>
     <div class="row"><span>predictive samples</span><span>${d.pre_n.toLocaleString()}</span></div>`;
 
@@ -362,10 +362,10 @@ function renderPortfolio(){
     let n=0,hit=0,pnl=0,net=0,above=0,netpos=0;
     const hits=T.map(r=>r.hit).sort((a,b)=>a-b);
     for(const r of T){ n+=r.n; hit+=r.hit*r.n/100; pnl+=r.pnl; net+=r.net; if(r.hit>50)above++; if(r.net>0)netpos++; }
-    const pooled=100*hit/n, se=50/Math.sqrt(n);
+    const pooled=100*hit/n;
     document.getElementById('portstats').innerHTML=[
       ['symbols tested',T.length.toLocaleString(),'am'],
-      ['pooled hit-rate',pooled.toFixed(2)+'% ≈ '+((pooled-50)/se).toFixed(0)+'σ','am'],
+      ['pooled hit-rate',pooled.toFixed(2)+'%','am'],
       ['median symbol hit-rate',hits[Math.floor(hits.length/2)].toFixed(2)+'%',''],
       ['symbols beating chance',above.toLocaleString()+' / '+T.length,'up'],
       ['Σ gross P&L (1 sh/symbol)',(pnl>=0?'+$':'−$')+fmt(Math.abs(pnl)), pnl>=0?'up':'down'],
