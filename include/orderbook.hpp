@@ -61,6 +61,9 @@ struct OrderBook{
 
     void add(uint32_t price, uint32_t shares, char side);
     void remove(uint32_t price, uint32_t shares, char side);
+    // Fold the change at the touch since the last call into ofi_accumulator
+    // (Cont-Kukanov-Stoikov OFI). Call after every add/remove you want counted.
+    void update_ofi();
     void fill_snapshot(int levels, const std::string& symbol, uint64_t timestamp_ns, BookSnapshot& snap);
 
     PriceLevel best_bid() const;
@@ -76,5 +79,4 @@ private:
     void reanchor(BookSide& s, bool is_bid, uint32_t center_tick);
     void maybe_reanchor(BookSide& s, bool is_bid);
     void collect(const BookSide& s, bool is_bid, size_t max_levels, std::vector<PriceLevel>& out) const;
-    void update_ofi();
 };

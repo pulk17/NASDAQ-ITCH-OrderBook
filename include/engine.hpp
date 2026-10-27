@@ -24,6 +24,11 @@ struct Engine {
     std::array<std::string, 65536> locate_to_symbol;
     PFMap<std::string, uint16_t> symbol_to_locate;
 
+    // Order-flow imbalance is research state, not book state: only the study,
+    // feature extraction, live stream and WASM pages read it. Off, the hot path
+    // is parse -> mutate -> done.
+    bool track_ofi = true;
+
     explicit Engine(size_t reserve_orders = 8000000) : books(std::make_unique<OrderBook[]>(65536)) {
 #ifndef PF_NO_RESERVE
         orders.max_load_factor(0.5);
@@ -37,4 +42,9 @@ struct Engine {
     // share this, so equal hashes mean byte-identical book state.
     static constexpr uint64_t FNV_BASIS = 14695981039346656037ULL;
     uint64_t fingerprint(uint64_t h = FNV_BASIS) const;
+
+private:
+    void     book_add(uint16_t locate, uint32_t price, uint32_t shares, char side);
+    void     book_remove(uint16_t locate, uint32_t price, uint32_t shares, char side);
+    uint16_t reduce(uint64_t order_ref, uint32_t shares);
 };

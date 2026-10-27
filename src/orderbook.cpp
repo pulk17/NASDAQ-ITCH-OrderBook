@@ -154,12 +154,10 @@ void OrderBook::rescan_best(BookSide& s, bool is_bid){
 
 void OrderBook::add(uint32_t price, uint32_t shares, char side){
     side_add(side == 'B' ? bid : ask, side == 'B', price, shares);
-    update_ofi();
 }
 
 void OrderBook::remove(uint32_t price, uint32_t shares, char side){
     side_remove(side == 'B' ? bid : ask, side == 'B', price, shares);
-    update_ofi();
 }
 
 PriceLevel OrderBook::best_bid() const{
