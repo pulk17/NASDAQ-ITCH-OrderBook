@@ -13,7 +13,7 @@ The -O0/-O2 build variants (optimization axis) are optional; build them with:
   g++ -O2 …                                                        -o build/orderbook_o2 …
 Missing variants are skipped.
 
-    python3 tools/bench.py S071321-v50.txt
+    python3 tools/bench.py S071321-v50.txt [REPS=5]
 """
 import json
 import os
@@ -24,6 +24,7 @@ import sys
 import time
 
 TAPE = sys.argv[1] if len(sys.argv) > 1 else 'S071321-v50.txt'
+REPS = int(sys.argv[2]) if len(sys.argv) > 2 else 5
 # same-workload native-vs-WASM point (22.8M-msg TOP6 slice), measured separately
 WASM_MPS = 17.33
 NATIVE_SUBSET_MPS = 16.37
@@ -59,20 +60,29 @@ def run(binary, extra):
 
 
 def main():
-    rows, latency = [], {}
-    for label, group, binary, extra in CONFIGS:
-        if not os.path.exists(binary):     # e.g. build the -O0/-O2 variants first (see docs)
-            print(f'-- {label} … skipped (missing {binary})', flush=True)
-            continue
-        print(f'-- {label} …', flush=True)
-        t = time.time()
-        out = run(binary, extra)
-        row = {'label': label, 'group': group, 'wall_s': round(time.time()-t, 1)}
-        for k, pat in P.items():
-            m = pat.search(out)
-            row[k] = (m.group(1) if k == 'fingerprint' else float(m.group(1))) if m else None
-        rows.append(row)
-        print(f'   {row.get("mps")} M msg/s · {row.get("mb_s")} MB/s  ({row["wall_s"]}s)', flush=True)
+    # Single full-tape runs on a laptop swing ~15% (same binary measured 8.2 and
+    # 9.5 M msg/s back to back), so every config runs REPS times, interleaved
+    # round-robin so thermal/turbo drift hits all configs alike; report the median.
+    rows, latency, samples = [], {}, {}
+    configs = [c for c in CONFIGS if os.path.exists(c[2]) or print(f'-- {c[0]} … skipped (missing {c[2]})')]
+    for rep in range(REPS):
+        for label, group, binary, extra in configs:
+            print(f'-- [{rep+1}/{REPS}] {label} …', flush=True)
+            t = time.time()
+            out = run(binary, extra)
+            row = {'label': label, 'group': group, 'wall_s': round(time.time()-t, 1)}
+            for k, pat in P.items():
+                m = pat.search(out)
+                row[k] = (m.group(1) if k == 'fingerprint' else float(m.group(1))) if m else None
+            samples.setdefault(label, []).append(row)
+            print(f'   {row.get("mps")} M msg/s · {row.get("mb_s")} MB/s  ({row["wall_s"]}s)', flush=True)
+        rows = []
+        for label, group, _, _ in configs:
+            runs = sorted(samples[label], key=lambda r: r['mps'] or 0)
+            med = dict(runs[len(runs)//2])
+            med.update(reps=len(runs), mps_min=runs[0]['mps'], mps_max=runs[-1]['mps'],
+                       fingerprint=runs[0]['fingerprint'] if len({r['fingerprint'] for r in runs}) == 1 else 'MISMATCH')
+            rows.append(med)
         write(rows, latency)
 
     print('-- latency (--bench, mmap) …', flush=True)
@@ -96,9 +106,10 @@ def write(rows, latency):
 
     with open('docs/benchmarks.md', 'w') as f:
         f.write(f'# PitchFork benchmarks\n\nCPU: {cpu}  ·  tape: {TAPE}  ·  {meta["date"]}\n\n')
-        f.write('## Throughput (plain run, full tape)\n\n| config | group | M msg/s | MB/s |\n|---|---|--:|--:|\n')
+        f.write(f'## Throughput (full tape, median of {REPS} interleaved runs)\n\n'
+                '| config | group | M msg/s | min–max | MB/s |\n|---|---|--:|--:|--:|\n')
         for r in rows:
-            f.write(f'| {r["label"]} | {r["group"]} | {r.get("mps")} | {r.get("mb_s")} |\n')
+            f.write(f'| {r["label"]} | {r["group"]} | {r.get("mps")} | {r.get("mps_min")}–{r.get("mps_max")} | {r.get("mb_s")} |\n')
         eng = [r for r in rows if r['group'] == 'engine']
         if eng:
             fps = {r.get('fingerprint') for r in rows if r.get('fingerprint')}
