@@ -33,17 +33,17 @@ struct ChunkedSource : ByteSource {
     }
 };
 
-template<typename Handler>
-inline void run_framed(ByteSource& src, Handler&& process){
-    constexpr size_t CARRY_CAP = 128;
+// Splits a byte stream into ITCH messages ([len:2 BE][payload]) and calls
+// process(payload) for each. A message may straddle two chunks, so the tail of
+// one chunk is carried into the next; keep one Framer per stream.
+struct Framer {
+    static constexpr size_t CARRY_CAP = 128;
     uint8_t carry[CARRY_CAP];
     size_t  carry_len = 0;
 
-    size_t chunk_len;
-    const uint8_t* chunk;
-    while((chunk = src.next(chunk_len)) != nullptr){
-        const uint8_t* p = chunk;
-        const uint8_t* e = chunk + chunk_len;
+    template<typename Handler>
+    void feed(const uint8_t* p, size_t len, Handler&& process){
+        const uint8_t* e = p + len;
 
         if(carry_len > 0){
             if(carry_len < 2){
@@ -70,7 +70,7 @@ inline void run_framed(ByteSource& src, Handler&& process){
 
         while(p + 2 <= e){
             uint16_t length = __builtin_bswap16(*reinterpret_cast<const uint16_t*>(p));
-            if(length == 0){ p = e; break; }
+            if(length == 0){ p = e; break; }          // zero-length frame: rest of chunk is padding
             if(p + 2 + (size_t)length > e) break;
             process(reinterpret_cast<const char*>(p + 2));
             p += 2 + (size_t)length;
@@ -81,4 +81,12 @@ inline void run_framed(ByteSource& src, Handler&& process){
             std::memcpy(carry, p, carry_len);
         }
     }
+};
+
+template<typename Handler>
+inline void run_framed(ByteSource& src, Handler&& process){
+    Framer framer;
+    size_t len;
+    const uint8_t* chunk;
+    while((chunk = src.next(len)) != nullptr) framer.feed(chunk, len, process);
 }

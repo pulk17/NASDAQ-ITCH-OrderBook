@@ -281,3 +281,10 @@ struct DirectListingPriceDiscovery { // 'O'
     uint32_t upper_collar;
 };
 #pragma pack()
+// Every message carries a 48-bit big-endian timestamp at bytes 5..10:
+// nanoseconds since midnight ET.
+inline uint64_t itch_ts(const char* msg){
+    uint64_t t = 0;
+    for(int i = 5; i < 11; i++) t = (t << 8) | (uint8_t)msg[i];
+    return t;
+}

@@ -1,12 +1,13 @@
 // C ABI surface for the WASM build. Plain extern "C" exports (no embind) keep
 // the binary small; JS talks to it through the heap. The SAME engine.cpp /
-// orderbook.cpp that hit 9.3M msg/s natively compile here unchanged -- the
+// orderbook.cpp that run natively compile here unchanged -- the
 // whole point of the I/O-free core split.
 #include <cstdint>
 #include <cstring>
 #include <cstdio>
 #include <emscripten/emscripten.h>
 #include "engine.hpp"
+#include "source.hpp"
 #include "strategy.hpp"
 
 static Engine* E = nullptr;
@@ -15,15 +16,11 @@ static uint32_t study_interval = 50;
 static uint64_t study_latency = 0;
 static uint32_t locate_msgs[65536];   // per-symbol activity, drives the watchlist
 
-// Persistent framer state: chunks arrive from JS at the caller's pace, and a
-// message may straddle two chunks -- same carry logic as the native framer.
-static uint8_t carry[128];
-static size_t  carry_len = 0;
+// Chunks arrive from JS at the caller's pace and a message may straddle two of
+// them, so the framer (shared with the native build) persists across calls.
+static Framer framer;
 static uint64_t msg_count = 0;
 static uint64_t last_ts = 0;   // ns since midnight, from the last processed message
-static inline uint64_t ts48(const uint8_t* body){
-    uint64_t t = 0; for(int i = 5; i < 11; i++) t = (t << 8) | body[i]; return t;
-}
 
 // Trade tape ring + session clock (fed from every processed message).
 static double last_ts_ns = 0;
@@ -32,8 +29,7 @@ static Trade tape[256];
 static uint64_t tape_n = 0;
 
 static inline void observe(const char* buffer){
-    uint64_t ts = 0;
-    for(int i = 0; i < 6; i++) ts = (ts << 8) | (uint8_t)buffer[5+i];
+    uint64_t ts = itch_ts(buffer);
     last_ts_ns = (double)ts;
     char t = buffer[0];
     if(t == 'E' || t == 'C'){
@@ -62,7 +58,7 @@ static MultiOFIStudy* make_study(){
 EMSCRIPTEN_KEEPALIVE void engine_create(){
     delete E; E = new Engine(100000);           // browser-sized registry
     delete S; S = make_study();
-    carry_len = 0; msg_count = 0; last_ts = 0; last_ts_ns = 0; tape_n = 0;
+    framer.carry_len = 0; msg_count = 0; last_ts = 0; last_ts_ns = 0; tape_n = 0;
     memset(locate_msgs, 0, sizeof locate_msgs);
 }
 
@@ -78,45 +74,17 @@ EMSCRIPTEN_KEEPALIVE void strategy_set_latency(double ns){
     delete S; S = make_study();
 }
 
-EMSCRIPTEN_KEEPALIVE void engine_feed(const uint8_t* chunk, int len_i){
-    size_t len = (size_t)len_i;
-    const uint8_t* p = chunk;
-    const uint8_t* e = chunk + len;
+// Every processed message goes through here, whichever feed path it came from.
+static inline void process(const char* msg){
+    observe(msg);
+    last_ts = itch_ts(msg);
+    uint16_t loc = E->process_message(msg);
+    if(loc){ locate_msgs[loc]++; S->on_book_update(loc, E->books[loc], last_ts); }
+    msg_count++;
+}
 
-    if(carry_len > 0){
-        if(carry_len < 2){
-            size_t take = std::min((size_t)(2 - carry_len), (size_t)(e - p));
-            memcpy(carry + carry_len, p, take); carry_len += take; p += take;
-        }
-        if(carry_len >= 2){
-            uint16_t length = __builtin_bswap16(*reinterpret_cast<const uint16_t*>(carry));
-            size_t need = 2 + (size_t)length;
-            if(length == 0 || need > sizeof(carry)) carry_len = 0;
-            else {
-                size_t take = std::min(need - carry_len, (size_t)(e - p));
-                memcpy(carry + carry_len, p, take); carry_len += take; p += take;
-                if(carry_len == need){
-                    observe(reinterpret_cast<const char*>(carry + 2));
-                    last_ts = ts48(carry + 2);
-                    uint16_t loc = E->process_message(reinterpret_cast<const char*>(carry + 2));
-                    if(loc){ locate_msgs[loc]++; S->on_book_update(loc, E->books[loc], last_ts); }
-                    msg_count++; carry_len = 0;
-                }
-            }
-        }
-    }
-    while(p + 2 <= e){
-        uint16_t length = __builtin_bswap16(*reinterpret_cast<const uint16_t*>(p));
-        if(length == 0){ p = e; break; }
-        if(p + 2 + (size_t)length > e) break;
-        observe(reinterpret_cast<const char*>(p + 2));
-        last_ts = ts48(p + 2);
-        uint16_t loc = E->process_message(reinterpret_cast<const char*>(p + 2));
-        if(loc){ locate_msgs[loc]++; S->on_book_update(loc, E->books[loc], last_ts); }
-        msg_count++;
-        p += 2 + (size_t)length;
-    }
-    if(p < e){ carry_len = (size_t)(e - p); memcpy(carry, p, carry_len); }
+EMSCRIPTEN_KEEPALIVE void engine_feed(const uint8_t* chunk, int len){
+    framer.feed(chunk, (size_t)len, process);
 }
 
 // Feed whole messages from chunk until the tape clock passes target_ts (ns
@@ -131,13 +99,9 @@ EMSCRIPTEN_KEEPALIVE int engine_feed_until(const uint8_t* chunk, int len_i, doub
     while(p + 2 <= e){
         uint16_t length = __builtin_bswap16(*reinterpret_cast<const uint16_t*>(p));
         if(length == 0 || p + 2 + (size_t)length > e) break;
-        uint64_t ts = ts48(p + 2);
-        if((double)ts >= target_ts) break;
-        observe(reinterpret_cast<const char*>(p + 2));
-        last_ts = ts;
-        uint16_t loc = E->process_message(reinterpret_cast<const char*>(p + 2));
-        if(loc){ locate_msgs[loc]++; S->on_book_update(loc, E->books[loc], last_ts); }
-        msg_count++;
+        const char* msg = reinterpret_cast<const char*>(p + 2);
+        if((double)itch_ts(msg) >= target_ts) break;
+        process(msg);
         p += 2 + (size_t)length;
     }
     return (int)(p - chunk);
