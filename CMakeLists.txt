@@ -26,3 +26,12 @@ target_include_directories(orderbook PRIVATE include third_party/unordered_dense
 target_compile_options(orderbook PRIVATE -O3 -march=native -flto)
 target_link_options(orderbook PRIVATE -flto)
 target_link_libraries(orderbook PRIVATE pthread uring)
+# Differential tests (asserts on, both ladder sizes): ctest --test-dir build
+enable_testing()
+foreach(span 2048 8)
+    add_executable(book_test_${span} tests/book_test.cpp src/orderbook.cpp)
+    target_include_directories(book_test_${span} PRIVATE include)
+    target_compile_definitions(book_test_${span} PRIVATE PF_SPAN=${span})
+    target_compile_options(book_test_${span} PRIVATE -O2 -UNDEBUG)
+    add_test(NAME book_span_${span} COMMAND book_test_${span})
+endforeach()

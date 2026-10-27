@@ -1,0 +1,12 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - run: sudo apt-get update && sudo apt-get install -y liburing-dev
+      - run: cmake -B build && cmake --build build -j
+      - run: ctest --test-dir build --output-on-failure
