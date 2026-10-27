@@ -10,7 +10,7 @@ time, and 4,797 of 6,307 symbols beat a coin flip. Crossing the spread to trade 
 Getting to an answer worth trusting took three things, and they are the three parts of this repo:
 
 1. **Fast enough to iterate.** A C++20 ITCH 5.0 engine that replays the whole 14 GB day in
-   48.9 s (9.4M msg/s), so a research question costs a minute, not an afternoon.
+   41.1 s (11.2M msg/s), so a research question costs a minute, not an afternoon.
 2. **Provably correct.** A differential test against a reference book, and a book-state
    fingerprint taken through the session that is identical across all 11 build/I/O variants.
 3. **A backtest that refuses to lie.** Spread costs, latency decay, walk-forward, and sanity
@@ -23,9 +23,9 @@ Everything below is measured on the tape named in each table, not estimated.
 
 | | |
 |---|---|
-| **Ingest throughput** | 9.41M msg/s · 286 MB/s (median of 5 runs) |
-| **Per-message dispatch** | 140 ns median · 510 ns p99 · 820 ns p99.9 |
-| **Full tape** | 459,781,103 messages · 14.0 GB · 48.9 s |
+| **Ingest throughput** | 11.18M msg/s · 340 MB/s (median of 5 runs) |
+| **Per-message dispatch** | 127 ns median · 446 ns p99 · 778 ns p99.9 |
+| **Full tape** | 459,781,103 messages · 14.0 GB · 41.1 s |
 | **Book reconstruction** | O(1) top-of-book, every level of every symbol |
 | **Determinism** | 11 build/engine variants → 1 identical fingerprint over 7 intraday checkpoints |
 | **Native vs WebAssembly** | 16.37M vs 17.33M msg/s on the same workload |
@@ -39,11 +39,11 @@ Everything below is measured on the tape named in each table, not estimated.
 - [What you can actually look at](#what-you-can-actually-look-at)
 - [Architecture](#architecture)
 - [Design decisions and what they cost or bought](#design-decisions-and-what-they-cost-or-bought)
-  - [1. The order book: tick-indexed ladder](#1-the-order-book-tick-indexed-ladder--143)
-  - [2. The hash map: unordered_dense](#2-the-hash-map-ankerlunordered_dense--125)
-  - [3. Pre-sizing the order map](#3-pre-sizing-the-order-map--111)
-  - [4. I/O: a three-way tie](#4-io-io_uring-mmap-and-read-are-a-three-way-tie)
-  - [5. Compiler flags](#5-compiler-flags--286)
+  - [1. The order book: tick-indexed ladder](#1-the-order-book-tick-indexed-ladder--146)
+  - [2. The hash map: unordered_dense](#2-the-hash-map-ankerlunordered_dense--129)
+  - [3. Pre-sizing the order map](#3-pre-sizing-the-order-map--109)
+  - [4. I/O: io_uring came last](#4-io-io_uring-came-last--4)
+  - [5. Compiler flags](#5-compiler-flags--327)
   - [6. Determinism as a fingerprint](#6-determinism-as-a-fingerprint)
   - [7. One engine, two targets](#7-one-engine-two-targets-native-and-wasm)
   - [8. Snapshot cut](#8-the-snapshot-cut-premarket-costs-zero-bytes)
@@ -125,18 +125,19 @@ flowchart TD
 
 The core loop is deliberately boring: frame a message, dispatch on one byte, mutate one side of
 one book, update a cached best. Everything expensive — studies, snapshots, feature extraction —
-hangs off that loop and is gated so it costs nothing when disabled.
+hangs off that loop in its own header (`study_runner`, `extractor`, `live_stream`) and is off
+unless asked for, including order-flow-imbalance tracking.
 
 ---
 
 ## Design decisions and what they cost or bought
 
 Every claim in this section is a measured delta. Each engine optimization can be compiled out
-with a `-D` flag, so "worth 1.43×" means *the same binary, one thing disabled, same tape*. The
+with a `-D` flag, so "worth 1.46×" means *the same binary, one thing disabled, same tape*. The
 build variants are in [`tools/build_variants.sh`](tools/build_variants.sh) and the harness is
 [`tools/bench.py`](tools/bench.py).
 
-### 1. The order book: tick-indexed ladder — **1.43×**
+### 1. The order book: tick-indexed ladder — **1.46×**
 
 **The problem.** A limit order book is a sorted map from price to resting quantity, and it is
 mutated tens of millions of times a second. The textbook answer is `std::map<price, level>` or a
@@ -156,11 +157,11 @@ the common path is an array index and the best price is cached.
 **Impact — build with `-DPF_SPAN=8` to shrink the window to nothing and force the fallback:**
 
 ```
-all optimizations    ██████████████████████████████████   9.59 M msg/s   (9.06–10.18)
-sorted-vector book   ███████████████████████▊             6.72 M msg/s   (6.53–7.20)   → 1.43×
+all optimizations   ██████████████████████████████████   11.05 M msg/s   (10.40–11.14)
+sorted-vector book  ███████████████████████▏             7.55 M msg/s   (7.52–7.58)   → 1.46×
 ```
 
-### 2. The hash map: `ankerl::unordered_dense` — **1.25×**
+### 2. The hash map: `ankerl::unordered_dense` — **1.29×**
 
 **The problem.** Every cancel, replace and execution arrives as an order *reference number*, not a
 price. So the engine keeps `order_ref → {price, shares, locate, side}` for every live order — and
@@ -173,11 +174,11 @@ live in one dense block, so a lookup is far likelier to hit cache.
 **Impact — `-DPF_STD_MAP` swaps it back:**
 
 ```
-all optimizations    ██████████████████████████████████   9.59 M msg/s   (9.06–10.18)
-std::unordered_map   ███████████████████████████▏         7.65 M msg/s   (7.37–8.63)   → 1.25×
+all optimizations   ██████████████████████████████████   11.05 M msg/s   (10.40–11.14)
+std::unordered_map  ██████████████████████████▍          8.58 M msg/s   (8.38–8.74)   → 1.29×
 ```
 
-### 3. Pre-sizing the order map — **~1.11×**
+### 3. Pre-sizing the order map — **1.09×**
 
 **The choice.** `reserve(8'000'000)` and `max_load_factor(0.5)` up front. A day has millions of
 live orders; without this the map rehashes repeatedly during the busiest part of the morning, and
@@ -188,14 +189,13 @@ runs at a load factor that costs probes.
 **Impact — `-DPF_NO_RESERVE`:**
 
 ```
-all optimizations    ██████████████████████████████████   9.59 M msg/s   (9.06–10.18)
-no reserve/tuning    ██████████████████████████████▌      8.63 M msg/s   (8.37–9.34)   → 1.11×
+all optimizations  ██████████████████████████████████   11.05 M msg/s   (10.40–11.14)
+no reserve/tuning  ███████████████████████████████      10.11 M msg/s   (10.05–10.19)   → 1.09×
 ```
 
-Smallest win of the three, and the only one whose min–max range overlaps the baseline's, so read
-it as "probably ~10%". Kept because it is one line and costs nothing but RAM.
+Smallest win of the three. Kept because it is one line and costs nothing but RAM.
 
-### 4. I/O: io_uring, mmap and read() are a three-way tie
+### 4. I/O: io_uring came last — **−4%**
 
 This is the result I most expected to go the other way.
 
@@ -205,34 +205,36 @@ shared ring with no syscall per operation should beat `mmap`, whose page faults 
 **The measurement** (median of 5 interleaved full-tape runs, min–max in brackets):
 
 ```
-chunked 1 MB   ██████████████████████████████████   9.71 M msg/s   (9.01–9.86)
-io_uring       █████████████████████████████████    9.43 M msg/s   (8.69–9.45)
-chunked 64 KB  ████████████████████████████████▉    9.41 M msg/s   (8.73–9.90)
-mmap           ████████████████████████████████▉    9.41 M msg/s   (8.96–9.93)
+chunked 1 MB   ██████████████████████████████████   11.21 M msg/s   (11.15–11.87)
+chunked 64 KB  █████████████████████████████████▉   11.21 M msg/s   (11.14–11.34)
+mmap           █████████████████████████████████▉   11.18 M msg/s   (10.93–12.20)
+io_uring       ████████████████████████████████▌    10.74 M msg/s   (10.63–10.88)
 ```
 
-**Every I/O source lands inside every other's run-to-run range.** An earlier single-run version of
-this table reported "io_uring 0.7% slower, 64 KB read 4.2% faster". Rerunning showed the *same
-binary* swinging ~15% between back-to-back runs on this laptop, so those deltas were noise, and the
-harness now takes medians of interleaved runs.
+**`mmap` and plain `read()` at 64 KB or 1 MB tie; io_uring is ~4% slower, and its best run is
+below every other source's worst.** An earlier single-run version of this table claimed finer
+rankings ("64 KB read beats mmap by 4.2%"). Rerunning showed the *same binary* swinging ~15%
+between back-to-back runs, so the harness now takes medians of interleaved runs and reports the
+range, and only gaps wider than the ranges are claimed.
 
-**Why it's a tie.** This workload is not I/O-bound. At ~9.4M msg/s the engine consumes ~290 MB/s;
-the NVMe drive and page cache supply that easily. The bottleneck is the parse-and-mutate loop, so
-making I/O asynchronous optimizes something that was never the constraint.
+**Why.** This workload is not I/O-bound. At ~11M msg/s the engine consumes ~340 MB/s, which the
+NVMe drive and page cache supply easily. The bottleneck is the parse-and-mutate loop, so making
+I/O asynchronous optimizes something that was never the constraint. io_uring then pays for ring
+bookkeeping on a queue that is never deep, and for copying into its own buffers.
 
 **What was kept.** All three, selectable at runtime (`--io_uring`, `--chunk N`, default `mmap`).
 io_uring is the right answer if the tape moves to slower or remote storage. **A negative result you
 can reproduce is still a result.**
 
-### 5. Compiler flags — **2.86×**
+### 5. Compiler flags — **3.27×**
 
 ```
--O3 +LTO +native  ██████████████████████████████████   9.47 M msg/s   (8.27–9.84)
--O2               █████████████████████████████████▌   9.36 M msg/s   (8.64–9.69)
--O0 (no opt)      ███████████▉                         3.31 M msg/s   (3.10–3.40)
+-O3 +LTO +native  ██████████████████████████████████   11.20 M msg/s   (10.65–11.22)
+-O2               █████████████████████████████████▍   11.02 M msg/s   (10.12–11.03)
+-O0 (no opt)      ██████████▍                          3.42 M msg/s   (3.39–3.44)
 ```
 
-Same source, three flag sets. `-O0 → -O3` is **2.86×**, the largest multiplier in the project,
+Same source, three flag sets. `-O0 → -O3` is **3.27×**, the largest multiplier in the project,
 and free. Note the shape: **`-O2` and `-O3 + LTO + march=native` are indistinguishable** within
 run-to-run noise. Worth having, not worth agonizing over, and `march=native` is a real portability
 cost if you ever ship binaries.
@@ -436,18 +438,18 @@ Reproduce: `tools/build_variants.sh && python3 tools/bench.py Binaries/S071321-v
 ### Ingest — by I/O source
 
 ```
-chunked 1 MB   ██████████████████████████████████   9.71 M msg/s   (9.01–9.86)
-io_uring       █████████████████████████████████    9.43 M msg/s   (8.69–9.45)
-chunked 64 KB  ████████████████████████████████▉    9.41 M msg/s   (8.73–9.90)
-mmap           ████████████████████████████████▉    9.41 M msg/s   (8.96–9.93)
+chunked 1 MB   ██████████████████████████████████   11.21 M msg/s   (11.15–11.87)
+chunked 64 KB  █████████████████████████████████▉   11.21 M msg/s   (11.14–11.34)
+mmap           █████████████████████████████████▉   11.18 M msg/s   (10.93–12.20)
+io_uring       ████████████████████████████████▌    10.74 M msg/s   (10.63–10.88)
 ```
 
 ### Compiler optimization — same source
 
 ```
--O3 +LTO +native  ██████████████████████████████████   9.47 M msg/s   (8.27–9.84)
--O2               █████████████████████████████████▌   9.36 M msg/s   (8.64–9.69)
--O0 (no opt)      ███████████▉                         3.31 M msg/s   (3.10–3.40)
+-O3 +LTO +native  ██████████████████████████████████   11.20 M msg/s   (10.65–11.22)
+-O2               █████████████████████████████████▍   11.02 M msg/s   (10.12–11.03)
+-O0 (no opt)      ██████████▍                          3.42 M msg/s   (3.39–3.44)
 ```
 
 ### Engine — one hand-written optimization disabled at a time
@@ -455,18 +457,18 @@ mmap           █████████████████████�
 All at `-O3 -march=native`. Each row is the same binary with one thing compiled out.
 
 ```
-all optimizations   ██████████████████████████████████   9.59 M msg/s   (9.06–10.18)
-no reserve/tuning   ██████████████████████████████▌      8.63 M msg/s   (8.37–9.34)
-std::unordered_map  ███████████████████████████▏         7.65 M msg/s   (7.37–8.63)
-sorted-vector book  ███████████████████████▊             6.72 M msg/s   (6.53–7.20)
+all optimizations   ██████████████████████████████████   11.05 M msg/s   (10.40–11.14)
+no reserve/tuning   ███████████████████████████████      10.11 M msg/s   (10.05–10.19)
+std::unordered_map  ██████████████████████████▍          8.58 M msg/s   (8.38–8.74)
+sorted-vector book  ███████████████████████▏             7.55 M msg/s   (7.52–7.58)
 ```
 
 | optimization | disable with | worth |
 |---|---|--:|
-| tick-indexed ladder | `-DPF_SPAN=8` | **1.43×** |
-| `unordered_dense` over `std::unordered_map` | `-DPF_STD_MAP` | **1.25×** |
-| `reserve` + load-factor tuning | `-DPF_NO_RESERVE` | **~1.11×** (ranges overlap) |
-| `-O3 +LTO +native` over `-O0` | `-O0` | **2.86×** |
+| tick-indexed ladder | `-DPF_SPAN=8` | **1.46×** |
+| `unordered_dense` over `std::unordered_map` | `-DPF_STD_MAP` | **1.29×** |
+| `reserve` + load-factor tuning | `-DPF_NO_RESERVE` | **1.09×** |
+| `-O3 +LTO +native` over `-O0` | `-O0` | **3.27×** |
 
 **All four engine variants produce the identical book fingerprint `12917521710882614610`** — these
 change speed, not answers.
@@ -478,20 +480,20 @@ instrumentation itself costs throughput, so it is kept out of the tables above.
 
 | mean | p50 | p90 | p99 | p99.9 | p99.99 | max |
 |--:|--:|--:|--:|--:|--:|--:|
-| 171.6 ns | **140 ns** | 304 ns | 510 ns | 820 ns | 4.59 µs | 225.02 µs |
+| 150.3 ns | **127 ns** | 260 ns | 446 ns | 778 ns | 5.21 µs | 238.32 µs |
 
 ```
-p50      140 ns   ▏
-p90      304 ns   ▎
-p99      510 ns   ▍
-p99.9    820 ns   ▋
-p99.99   4.59 µs  ███▍
-max      225.02 µs ██████████████████████████████████
+p50      127 ns   ▏
+p90      260 ns   ▎
+p99      446 ns   ▍
+p99.9    778 ns   ▋
+p99.99   5.21 µs  ███▍
+max      238.32 µs ██████████████████████████████████
                   (log-scale ladder — hover the chart on about.html for exact values)
 ```
 
 The p99.99 and max are page faults and scheduler noise, not the engine. The distribution that
-matters is p50–p99.9: **140 → 820 ns**, a 6× spread across four nines.
+matters is p50–p99.9: **127 → 778 ns**, a 6× spread across four nines.
 
 ### Native vs WebAssembly
 
@@ -645,24 +647,32 @@ Not Google Drive — virus-scan interstitial and no CORS.
 ## Repo layout
 
 ```
-include/, src/     engine, order book, strategies, I/O sources, live publisher
-  engine.hpp         message dispatch + order map      (-DPF_STD_MAP, -DPF_NO_RESERVE)
-  orderbook.hpp      tick ladder + fallback            (-DPF_SPAN=N)
-  strategy.hpp       MultiOFIStudy: all symbols, one pass
-  source.hpp         mmap / chunked / io_uring behind one ByteSource
-tests/             book vs std::map reference (random ops, sub-penny, re-anchors) + framer splits
-wasm/              C ABI bindings + emscripten build script
-report/            the static site: 4 pages + theme.css + _headers + generated data
+src/main.cpp         options, file mapping, the one on_message loop      ← start here
+include/
+  messages.hpp         ITCH 5.0 wire structs + itch_ts()
+  source.hpp           Framer + mmap / chunked sources behind ByteSource
+  io_uring_source.hpp  io_uring source
+  engine.hpp           message dispatch + order map         (-DPF_STD_MAP, -DPF_NO_RESERVE)
+  orderbook.hpp        tick ladder + fallback + OFI          (-DPF_SPAN=N)
+  strategy.hpp         MultiOFIStudy: every symbol, one pass
+  study_runner.hpp     --study: latency sweep, walk-forward, guards, results JSON
+  extractor.hpp        --extract: per-symbol Strategy Lab features
+  live_stream.hpp      --live: paced UDP stream (SPSC queue + publisher thread)
+  bench.hpp            --bench: rdtsc latency histogram
+src/engine.cpp, orderbook.cpp   the two hot files
+tests/               book vs std::map reference (random ops, sub-penny, re-anchors) + framer splits
+wasm/                C ABI bindings over the same engine + emscripten build script
+report/              the static site: 4 pages + theme.css + _headers + generated data
 tools/
-  make_demo.sh       tape -> gzip chunks + manifest       slice_itch.py, rank_symbols.py
-  extract.sh         tape -> per-symbol feature series
-  bench.py           the benchmark table above            build_variants.sh
-  package.sh         pre-deploy audit
-  ws_relay.py        UDP -> WebSocket, for live-native.html
-  verify.js          replay a slice back through the engine
-  shoot.js/probe.js  headless CDP helpers
-docs/              benchmarks.md
-third_party/       ankerl::unordered_dense (submodule)
+  make_demo.sh         tape -> gzip chunks + manifest       slice_itch.py, rank_symbols.py
+  extract.sh           tape -> per-symbol feature series
+  bench.py             the benchmark table above            build_variants.sh
+  package.sh           pre-deploy audit
+  ws_relay.py          UDP -> WebSocket, for live-native.html
+  verify.js            replay a slice back through the engine
+  shoot.js/probe.js    headless CDP helpers
+docs/benchmarks.md   generated by tools/bench.py
+third_party/         ankerl::unordered_dense (submodule)
 ```
 
 ---
