@@ -204,7 +204,9 @@ int main(int argc, char** argv){
     SPSCQueue<BookSnapshot, 1024> snapshot_queue;
     std::atomic<bool> engine_running{true};
 
-    std::thread publisher_thread([&](){
+    // Only live mode publishes; don't leave a spinning thread beside a benchmark.
+    std::thread publisher_thread;
+    if(live_mode) publisher_thread = std::thread([&](){
         BookSnapshot local_snap;
         while(engine_running.load(std::memory_order_relaxed)){
             if(snapshot_queue.pop(local_snap)){
@@ -471,7 +473,7 @@ int main(int argc, char** argv){
     }
 
     engine_running.store(false, std::memory_order_release);
-    publisher_thread.join();
+    if(publisher_thread.joinable()) publisher_thread.join();
 
     munmap((void*)data, file_size);
     close(fd);
