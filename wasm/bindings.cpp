@@ -225,15 +225,7 @@ EMSCRIPTEN_KEEPALIVE void trade_get(double i, uint32_t* out){
 // Decimal fingerprint written into buf -- byte-identical book state proof
 // against the native binary on the same input.
 EMSCRIPTEN_KEEPALIVE void engine_fingerprint(char* buf){
-    uint64_t fp = 1469598103934665603ULL;
-    for(uint32_t l = 0; l < 65536; l++){
-        for(const auto& lvl : E->books[l].all_bids()){
-            fp ^= ((uint64_t)l << 40) ^ ((uint64_t)lvl.price << 8) ^ lvl.shares; fp *= 1099511628211ULL;
-        }
-        for(const auto& lvl : E->books[l].all_asks()){
-            fp ^= ((uint64_t)l << 40) ^ ((uint64_t)lvl.price << 8) ^ lvl.shares; fp *= 1099511628211ULL;
-        }
-    }
+    uint64_t fp = E->fingerprint();
     snprintf(buf, 32, "%llu", (unsigned long long)fp);
 }
 

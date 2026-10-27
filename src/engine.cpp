@@ -99,3 +99,15 @@ uint16_t Engine::process_message(const char* buffer){
     }
     return 0;
 }
+
+uint64_t Engine::fingerprint(uint64_t h) const{
+    for(uint32_t l = 0; l < 65536; l++){
+        for(const auto& lvl : books[l].all_bids()){
+            h ^= ((uint64_t)l << 40) ^ ((uint64_t)lvl.price << 8) ^ lvl.shares; h *= 1099511628211ULL;
+        }
+        for(const auto& lvl : books[l].all_asks()){
+            h ^= ((uint64_t)l << 40) ^ ((uint64_t)lvl.price << 8) ^ lvl.shares; h *= 1099511628211ULL;
+        }
+    }
+    return h;
+}

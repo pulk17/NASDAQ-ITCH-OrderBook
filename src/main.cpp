@@ -215,7 +215,23 @@ int main(int argc, char** argv){
         }
     });
 
+    // The book is empty once the day ends, so hashing only the final state proves
+    // nothing. Fold the full book in at every hour 10:00..16:00 instead: any
+    // divergence between variants during the session changes the hash.
+    uint64_t fp_value = Engine::FNV_BASIS;
+    uint64_t next_checkpoint = 36000000000000ULL;          // 10:00 ET, ns since midnight
+    constexpr uint64_t LAST_CHECKPOINT = 57600000000000ULL; // 16:00
+
     auto process_message = [&](const char* buffer){
+
+        if(next_checkpoint <= LAST_CHECKPOINT){
+            uint64_t ts = 0;
+            for(int i = 0; i < 6; i++) ts = (ts << 8) | (uint8_t)buffer[5+i];
+            if(ts >= next_checkpoint){                   // book as of just before this message
+                fp_value = engine.fingerprint(fp_value);
+                next_checkpoint += 3600000000000ULL;
+            }
+        }
 
         uint64_t t0 = 0;
         if(bench_mode) t0 = rdtsc_start();
@@ -343,20 +359,8 @@ int main(int argc, char** argv){
     else                src = &mmap_src;
     run_framed(*src, process_message);
 
-    uint64_t fp_value = 0;
-    {
-        uint64_t fp = 1469598103934665603ULL;
-        for(uint32_t l = 0; l < 65536; l++){
-            for(const auto& lvl : engine.books[l].all_bids()){
-                fp ^= ((uint64_t)l << 40) ^ ((uint64_t)lvl.price << 8) ^ lvl.shares; fp *= 1099511628211ULL;
-            }
-            for(const auto& lvl : engine.books[l].all_asks()){
-                fp ^= ((uint64_t)l << 40) ^ ((uint64_t)lvl.price << 8) ^ lvl.shares; fp *= 1099511628211ULL;
-            }
-        }
-        std::cout << "Book fingerprint: " << fp << "\n";
-        fp_value = fp;
-    }
+    fp_value = engine.fingerprint(fp_value);   // final state (empty after a full day)
+    std::cout << "Book fingerprint: " << fp_value << "\n";
 
     std::cout << "Total symbols: " << engine.symbol_to_locate.size() << "\n";
 

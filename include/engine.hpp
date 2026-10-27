@@ -32,4 +32,9 @@ struct Engine {
     }
 
     uint16_t process_message(const char* buffer);
+
+    // FNV-1a over every level of every book, folded into `h`. Native and WASM
+    // share this, so equal hashes mean byte-identical book state.
+    static constexpr uint64_t FNV_BASIS = 14695981039346656037ULL;
+    uint64_t fingerprint(uint64_t h = FNV_BASIS) const;
 };
